@@ -5,7 +5,7 @@ WORKDIR /app
 # Copy package files
 COPY server/package.json server/package-lock.json* ./
 
-# Install all deps (need dev deps for prisma generate + tsc)
+# Install all deps (need dev deps for prisma generate + tsx)
 RUN npm install
 
 # Copy source
@@ -14,13 +14,10 @@ COPY server/ ./
 # Generate Prisma client
 RUN npx prisma generate
 
-# Build TypeScript
-RUN npx tsc || true
-
 # Create uploads dir
 RUN mkdir -p uploads
 
 EXPOSE 3001
 
-# Entrypoint: push schema, seed user, then start
-CMD sh -c "npx prisma db push --accept-data-loss && npx tsx src/seed.ts && node dist/index.js"
+# Entrypoint: push schema, seed user, then start with tsx (no tsc build needed)
+CMD sh -c "npx prisma db push --accept-data-loss && npx tsx src/seed.ts && npx tsx src/index.ts"
