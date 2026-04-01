@@ -57,7 +57,7 @@ export const useUploadStore = create<UploadState>((set) => ({
       const formData = new FormData();
       formData.append("file", file);
       formData.append("batchId", batchId);
-      const { data } = await api.post("/upload/proteus", formData, {
+      await api.post("/upload/proteus", formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
       set({ isUploading: false });
