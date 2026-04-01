@@ -13,7 +13,11 @@ const PORT = process.env.PORT || 3001;
 
 app.use(
   cors({
-    origin: process.env.CLIENT_URL || "http://localhost:5173",
+    origin: (origin, callback) => {
+      // Allow requests with no origin (mobile apps, Postman, server-to-server)
+      // In production, nginx proxies the request so origin may vary
+      callback(null, true);
+    },
     credentials: true,
   })
 );

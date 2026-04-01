@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import multer from "multer";
 import path from "path";
+import fs from "fs";
 import { authMiddleware } from "../middleware/auth.middleware.js";
 import { processAutorizador } from "../services/autorizadorProcessor.js";
 import { processProteus } from "../services/proteusProcessor.js";
@@ -9,9 +10,16 @@ import { PrismaClient } from "@prisma/client";
 const router = Router();
 const prisma = new PrismaClient();
 
+// Use absolute path for Docker container (/app/uploads) or fallback for local dev
+const uploadsDir = path.resolve(process.cwd(), "uploads");
+// Ensure uploads directory exists
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => {
-    cb(null, path.join(import.meta.dirname, "../../uploads"));
+    cb(null, uploadsDir);
   },
   filename: (_req, file, cb) => {
     const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;

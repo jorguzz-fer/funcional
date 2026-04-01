@@ -63,7 +63,24 @@ export async function processAutorizador(
 
     totalOriginal++;
 
-    const getValue = (col: number) => row.getCell(col).value;
+    // ExcelJS cells can be objects (richText, formula, hyperlink, error)
+    // This helper extracts the raw value safely
+    const getValue = (col: number) => {
+      const cell = row.getCell(col);
+      const v = cell.value;
+      if (v === null || v === undefined) return null;
+      // Handle formula results
+      if (typeof v === "object" && "result" in v) return (v as { result: unknown }).result;
+      // Handle rich text
+      if (typeof v === "object" && "richText" in v) {
+        return (v as { richText: Array<{ text: string }> }).richText.map((r) => r.text).join("");
+      }
+      // Handle hyperlink
+      if (typeof v === "object" && "hyperlink" in v) return (v as { text: string }).text;
+      // Handle error
+      if (typeof v === "object" && "error" in v) return null;
+      return v;
+    };
 
     const servico = String(getValue(1) || "");
     const procedimento = String(getValue(2) || "");
