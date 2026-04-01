@@ -1,0 +1,152 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  name      String
+  role      String   @default("operator")
+  createdAt DateTime @default(now())
+}
+
+model FaturamentoBatch {
+  id              String   @id @default(uuid())
+  periodo         String
+  dataExtracaoAut DateTime
+  dataExtracaoPro DateTime?
+  status          String   @default("aguardando_upload")
+
+  totalRegistrosOriginal Int?
+  totalTrabalhada        Int?
+  totalVazias            Int?
+  totalForaAging         Int?
+  totalExcluidas         Int?
+  valorTotalFaturar      Decimal?
+
+  uploadedBy String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  autorizadorRecords AutorizadorRecord[]
+  proteusRecords     ProteusRecord[]
+  reconciliations    ReconciliationResult[]
+
+  @@index([periodo])
+}
+
+model AutorizadorRecord {
+  id      String           @id @default(uuid())
+  batchId String
+  batch   FaturamentoBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  servico                     String
+  procedimento                String?
+  procedimentoReclassificacao String?
+  dataEnvioJanssen            DateTime?
+  mesReferencia               String?
+  nomeDaClinica               String?
+  cnpjFaturamento             String
+  cidade                      String?
+  uf                          String?
+  prazoPagamento              Int?
+  numNotaFiscal               String?
+  dataEnvioNF                 DateTime?
+  dataUtilizacao              DateTime?
+  codigoPaciente              String?
+  voucher                     Int
+  lote                        String?
+  valor                       Decimal
+  dspPsp                      String?
+  valorTotalOrdemPagamento    Decimal?
+  codOrdemPagamento           Int?
+  idPedido                    Int?
+  nomeExame                   String?
+  dataFinalizacao             DateTime?
+  dtEmissaoNF                 DateTime?
+  cnpjCredenciado             String?
+  nomeFantasia                String?
+  cidadeCredenciado           String?
+  ufCredenciado               String?
+  statusOrdemPagamento        String?
+  dataInfusao                 DateTime?
+  statusPedido                String?
+  dataFaturamento             DateTime?
+  aging                       Int
+  statusSF                    String?
+
+  classificacao String @default("trabalhada")
+
+  @@index([batchId])
+  @@index([voucher])
+  @@index([cnpjFaturamento])
+  @@index([numNotaFiscal])
+  @@index([classificacao])
+}
+
+model ProteusRecord {
+  id      String           @id @default(uuid())
+  batchId String
+  batch   FaturamentoBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  documento   String
+  nfOriginal  String
+  serie       String?
+  produto     String
+  descricao   String?
+  quantidade  Int?
+  vlrUnitario Decimal
+  vlrTotal    Decimal
+  codForCli   String?
+  loja        String?
+  rzSocial    String?
+  cnpj        String
+  dtDigitacao DateTime?
+  tes         String?
+  custoMoeda1 Decimal?
+  centroCusto String?
+  itemConta   String?
+  codClVal    String?
+
+  @@index([batchId])
+  @@index([nfOriginal])
+  @@index([cnpj])
+}
+
+model ReconciliationResult {
+  id      String           @id @default(uuid())
+  batchId String
+  batch   FaturamentoBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  numNotaFiscal     String?
+  voucher           Int?
+  codOrdemPagamento Int?
+
+  status String
+
+  valorAutorizador Decimal?
+  valorProteus     Decimal?
+  bateValor        Boolean?
+
+  cnpjAutorizador String?
+  cnpjProteus     String?
+  bateCnpj        Boolean?
+
+  razaoAutorizador String?
+  razaoProteus     String?
+  bateRazao        Boolean?
+
+  observacao String?
+  resolvedAt DateTime?
+  resolvedBy String?
+
+  @@index([batchId])
+  @@index([status])
+  @@index([numNotaFiscal])
+}
