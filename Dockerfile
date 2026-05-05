@@ -40,9 +40,14 @@ COPY --from=builder /app/public ./public
 # Prisma Client WASM necessário em runtime
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
+COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
 COPY --from=builder /app/prisma ./prisma
 
-RUN chown -R nextjs:nodejs /app
+# Entrypoint roda migrate deploy antes de subir o servidor
+COPY entrypoint.sh ./entrypoint.sh
+
+RUN chown -R nextjs:nodejs /app && \
+    chmod +x /app/entrypoint.sh
 
 USER nextjs
 
@@ -50,4 +55,4 @@ EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
-CMD ["node", "server.js"]
+CMD ["/app/entrypoint.sh"]
