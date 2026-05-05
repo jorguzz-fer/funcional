@@ -37,13 +37,15 @@ COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
 
-# Prisma Client WASM necessário em runtime
+# Prisma Client WASM necessário em runtime (sem o CLI — não funciona no standalone)
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
-COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
 COPY --from=builder /app/prisma ./prisma
 
-# Entrypoint roda migrate deploy antes de subir o servidor
+# Scripts utilitários (migration runner + seed)
+COPY --from=builder /app/scripts ./scripts
+
+# Entrypoint roda migration customizada antes de subir o servidor
 COPY entrypoint.sh ./entrypoint.sh
 
 RUN chown -R nextjs:nodejs /app && \
