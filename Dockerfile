@@ -1,45 +1,53 @@
-# === Stage 1: Build Client ===
-FROM node:20-alpine AS client-build
-WORKDIR /app/client
-COPY client/package.json client/package-lock.json* ./
-RUN npm install
-COPY client/ ./
-RUN npm run build
-
-# === Stage 2: Build Server ===
-FROM node:20-alpine AS server-build
-WORKDIR /app/server
-COPY server/package.json server/package-lock.json* ./
-RUN npm install
-COPY server/ ./
-RUN npx prisma generate
-RUN npx tsc || true
-
-# === Stage 3: Production ===
-FROM node:20-alpine AS production
+# ─── Stage 1: Dependências ────────────────────────────────────────────────────
+FROM node:22-alpine AS deps
 WORKDIR /app
 
-# Install production deps for server
-COPY server/package.json server/package-lock.json* ./server/
-RUN cd server && npm install --omit=dev
+COPY package.json package-lock.json ./
+COPY prisma ./prisma
 
-# Copy prisma schema + generated client
-COPY server/prisma ./server/prisma
-RUN cd server && npx prisma generate
+RUN npm ci --ignore-scripts
 
-# Copy compiled server
-COPY --from=server-build /app/server/dist ./server/dist
+# ─── Stage 2: Build ───────────────────────────────────────────────────────────
+FROM node:22-alpine AS builder
+WORKDIR /app
 
-# Copy built client
-COPY --from=client-build /app/client/dist ./client/dist
+# NODE_ENV=production faz o Next.js usar cache do prisma corretamente
+ENV NODE_ENV=production
 
-# Install serve for static files
-RUN npm install -g serve
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
 
-# Copy entrypoint
-COPY entrypoint.sh ./
-RUN chmod +x entrypoint.sh
+# Gera o Prisma Client ANTES do build
+RUN npx prisma generate
 
-EXPOSE 3001 5173
+RUN npm run build
 
-CMD ["./entrypoint.sh"]
+# ─── Stage 3: Runner ──────────────────────────────────────────────────────────
+FROM node:22-alpine AS runner
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 nextjs
+
+# Standalone output
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
+COPY --from=builder /app/public ./public
+
+# Prisma Client WASM necessário em runtime
+COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
+COPY --from=builder /app/prisma ./prisma
+
+RUN chown -R nextjs:nodejs /app
+
+USER nextjs
+
+EXPOSE 3000
+ENV PORT=3000
+ENV HOSTNAME="0.0.0.0"
+
+CMD ["node", "server.js"]
