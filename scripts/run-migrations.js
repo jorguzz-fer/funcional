@@ -25,6 +25,13 @@ async function main() {
     )
   `);
 
+  // --force limpa registros anteriores para re-aplicar (útil após bug no runner)
+  const force = process.argv.includes("--force");
+  if (force) {
+    await prisma.$executeRawUnsafe(`DELETE FROM "_prisma_migrations"`);
+    console.log("force: registros de migrations removidos");
+  }
+
   // Busca migrations já aplicadas
   const rows = await prisma.$queryRawUnsafe(
     `SELECT migration_name FROM "_prisma_migrations" WHERE finished_at IS NOT NULL`
@@ -57,11 +64,11 @@ async function main() {
       id, checksum, entry
     );
 
-    // Divide em statements por ";\n" — seguro para DDL simples sem blocos PL/pgSQL
+    // Divide em statements por ";\n" e executa (comentários -- são válidos em SQL)
     const statements = sql
       .split(/;\s*\n/)
       .map((s) => s.trim())
-      .filter((s) => s.length > 0 && !s.startsWith("--"));
+      .filter((s) => s.length > 0);
 
     let steps = 0;
     for (const stmt of statements) {
