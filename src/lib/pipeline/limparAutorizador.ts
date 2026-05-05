@@ -1,0 +1,269 @@
+import { PedidoInput } from "./types";
+import {
+  normalizarCnpj,
+  parsearData,
+  parsearValor,
+  normalizarTexto,
+  encontrarColuna,
+} from "./utils";
+
+interface FaturamentoRef {
+  mesReferencia: number;
+  anoReferencia: number;
+}
+
+/**
+ * Column mapping definitions for the Autorizador spreadsheet.
+ * Each entry lists candidate header names (in Portuguese) that should be
+ * recognized as a given field.
+ */
+const COLUMN_MAP = {
+  voucher: ["voucher", "codigo de autorizacao", "codigo autorizacao"],
+  codigoPaciente: ["codigo do paciente", "codigo paciente", "bra", "dsp"],
+  dataInfusao: ["data de infusao", "data infusao"],
+  dataFinalizacaoVoucher: ["data de finalizacao", "data finalizacao", "data finalizacao voucher"],
+  dataFaturamento: ["data de faturamento", "data faturamento"],
+  statusVoucher: ["status"],
+  lote: ["lote"],
+  valorUnitario: ["valor", "valor unitario"],
+  codigoOrdemPagamento: ["codigo da ordem", "codigo da ordem de pagamento", "codigo ordem"],
+  statusOrdemPagamento: ["status da ordem", "status ordem"],
+  nomeExame: ["nome do exame", "nome exame", "exame"],
+  cnpjClinica: ["cnpj", "cnpj de faturamento"],
+  nomeClinica: ["nome da clinica", "nome fantasia", "clinica"],
+  numeroNotaFiscal: ["numero da nota fiscal", "numero nota fiscal", "nota fiscal", "nf"],
+  articulacaoId: ["articulacao", "articulacao id", "id articulacao"],
+  dsp: ["dsp", "diagnostico"],
+} as const;
+
+type FieldKey = keyof typeof COLUMN_MAP;
+
+/**
+ * Resolves the column lookup map: given a set of actual headers from the file,
+ * returns a Record<fieldKey, actualHeaderName>.
+ */
+function resolveHeaders(headers: string[]): Partial<Record<FieldKey, string>> {
+  const resolved: Partial<Record<FieldKey, string>> = {};
+  for (const [field, candidates] of Object.entries(COLUMN_MAP) as [FieldKey, readonly string[]][]) {
+    const found = encontrarColuna(headers, candidates as string[]);
+    if (found) {
+      resolved[field] = found;
+    }
+  }
+  return resolved;
+}
+
+function getCell(row: Record<string, unknown>, header: string | undefined): unknown {
+  if (!header) return undefined;
+  return row[header];
+}
+
+/**
+ * Calculates the placeholder "data de fechamento" as the 15th day of the
+ * reference month/year. In production this should be replaced by the actual
+ * business-day calculation (10th business day of the month).
+ */
+function calcularDataFechamentoPlaceholder(mes: number, ano: number): Date {
+  return new Date(Date.UTC(ano, mes - 1, 15));
+}
+
+/**
+ * Detects whether a row represents an exam (EXAME) or infusion (INFUSAO)
+ * based on the "nome do exame" column value.
+ */
+function detectarTipo(nomeExame: unknown): "EXAME" | "INFUSAO" {
+  const texto = normalizarTexto(nomeExame);
+  if (texto.includes("exame") || texto.includes("laborat")) return "EXAME";
+  return "INFUSAO";
+}
+
+/**
+ * Returns true if the medicament name suggests it requires a lot number
+ * (Remicade or Stelara, which are biologic products tracked by lot).
+ */
+function exigeLote(nomeExame: unknown): boolean {
+  const texto = normalizarTexto(nomeExame);
+  return texto.includes("remicade") || texto.includes("stelara");
+}
+
+/**
+ * Main cleaning function for the Autorizador spreadsheet.
+ *
+ * @param rows   Raw rows parsed from the xlsx file (one object per row,
+ *               keys are column headers).
+ * @param faturamento  Reference month/year used to compute AGE.
+ * @returns      Array of PedidoInput ready for persistence.
+ */
+export function limparAutorizador(
+  rows: Record<string, unknown>[],
+  faturamento: FaturamentoRef,
+): PedidoInput[] {
+  if (rows.length === 0) return [];
+
+  // Resolve headers once, using the first row's keys as column names
+  const headers = Object.keys(rows[0]);
+  const col = resolveHeaders(headers);
+
+  const dataFechamento = calcularDataFechamentoPlaceholder(
+    faturamento.mesReferencia,
+    faturamento.anoReferencia,
+  );
+
+  return rows.map((row): PedidoInput => {
+    const voucher = String(getCell(row, col.voucher) ?? "").trim();
+    const codigoPaciente = String(getCell(row, col.codigoPaciente) ?? "").trim();
+    const statusVoucher = String(getCell(row, col.statusVoucher) ?? "").trim().toUpperCase();
+    const lote = String(getCell(row, col.lote) ?? "").trim() || null;
+    const nomeExame = getCell(row, col.nomeExame);
+    const cnpjRaw = getCell(row, col.cnpjClinica);
+    const codigoOrdemPagamento = String(getCell(row, col.codigoOrdemPagamento) ?? "").trim() || null;
+    const statusOrdemPagamento = String(getCell(row, col.statusOrdemPagamento) ?? "").trim() || null;
+    const numeroNotaFiscal = String(getCell(row, col.numeroNotaFiscal) ?? "").trim() || null;
+    const articulacaoId = String(getCell(row, col.articulacaoId) ?? "").trim() || null;
+    const dsp = String(getCell(row, col.dsp) ?? "").trim() || null;
+    const nomeClinica = String(getCell(row, col.nomeClinica) ?? "").trim() || null;
+
+    const dataInfusao = parsearData(getCell(row, col.dataInfusao));
+    const dataFinalizacaoVoucher = parsearData(getCell(row, col.dataFinalizacaoVoucher));
+    const dataFaturamento = parsearData(getCell(row, col.dataFaturamento));
+
+    const valorUnitario = parsearValor(getCell(row, col.valorUnitario));
+
+    const cnpjClinica = normalizarCnpj(cnpjRaw != null ? String(cnpjRaw) : null);
+
+    // AGE: days between infusion date and the reference closing date
+    let ageDias: number | null = null;
+    if (dataInfusao) {
+      const diffMs = dataFechamento.getTime() - dataInfusao.getTime();
+      ageDias = Math.floor(diffMs / 86400000);
+    }
+
+    const tipo = detectarTipo(nomeExame);
+
+    // ─── Exclusion filters ─────────────────────────────────────────────────
+    if (ageDias !== null && ageDias > 90) {
+      return {
+        voucher,
+        codigoPaciente,
+        dataInfusao,
+        dataFinalizacaoVoucher,
+        dataFaturamento,
+        ageDias,
+        statusVoucher: statusVoucher || null,
+        lote,
+        valorUnitario,
+        codigoOrdemPagamento,
+        statusOrdemPagamento,
+        cnpjClinica,
+        nomeClinica,
+        numeroNotaFiscal,
+        articulacaoId,
+        dsp,
+        tipo,
+        excluido: true,
+        motivoExclusao: "Fora do prazo (>90 dias)",
+      };
+    }
+
+    if (statusVoucher === "CONSULTADO") {
+      return {
+        voucher,
+        codigoPaciente,
+        dataInfusao,
+        dataFinalizacaoVoucher,
+        dataFaturamento,
+        ageDias,
+        statusVoucher,
+        lote,
+        valorUnitario,
+        codigoOrdemPagamento,
+        statusOrdemPagamento,
+        cnpjClinica,
+        nomeClinica,
+        numeroNotaFiscal,
+        articulacaoId,
+        dsp,
+        tipo,
+        excluido: true,
+        motivoExclusao: "Voucher consultado",
+      };
+    }
+
+    if (statusVoucher === "GLOSADO") {
+      return {
+        voucher,
+        codigoPaciente,
+        dataInfusao,
+        dataFinalizacaoVoucher,
+        dataFaturamento,
+        ageDias,
+        statusVoucher,
+        lote,
+        valorUnitario,
+        codigoOrdemPagamento,
+        statusOrdemPagamento,
+        cnpjClinica,
+        nomeClinica,
+        numeroNotaFiscal,
+        articulacaoId,
+        dsp,
+        tipo,
+        excluido: true,
+        motivoExclusao: "Voucher glosado",
+      };
+    }
+
+    // No ordem de pagamento AND no data de finalizacao
+    if (!codigoOrdemPagamento && !dataFinalizacaoVoucher) {
+      return {
+        voucher,
+        codigoPaciente,
+        dataInfusao,
+        dataFinalizacaoVoucher,
+        dataFaturamento,
+        ageDias,
+        statusVoucher: statusVoucher || null,
+        lote,
+        valorUnitario,
+        codigoOrdemPagamento,
+        statusOrdemPagamento,
+        cnpjClinica,
+        nomeClinica,
+        numeroNotaFiscal,
+        articulacaoId,
+        dsp,
+        tipo,
+        excluido: true,
+        motivoExclusao: "Sem finalização",
+      };
+    }
+
+    // ─── Alerts (non-excluding) ────────────────────────────────────────────
+    const alertas: string[] = [];
+    if (exigeLote(nomeExame) && !lote) {
+      alertas.push("LOTE_AUSENTE");
+    }
+
+    return {
+      voucher,
+      codigoPaciente,
+      dataInfusao,
+      dataFinalizacaoVoucher,
+      dataFaturamento,
+      ageDias,
+      statusVoucher: statusVoucher || null,
+      lote,
+      valorUnitario,
+      codigoOrdemPagamento,
+      statusOrdemPagamento,
+      cnpjClinica,
+      nomeClinica,
+      numeroNotaFiscal,
+      articulacaoId,
+      dsp,
+      tipo,
+      excluido: false,
+      alertas,
+    };
+  });
+}
