@@ -45,11 +45,12 @@ export default async function DivergenciasPage({ params, searchParams }: Props) 
   const periodo = `${MESES[faturamento.mesReferencia - 1]} ${faturamento.anoReferencia}`;
 
   // Build filter
-  const where: Parameters<typeof prisma.divergencia.findMany>[0]["where"] = {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const where: Record<string, any> = {
     faturamentoId: id,
   };
   if (sp.tipo && sp.tipo !== "todos" && TIPOS.includes(sp.tipo)) {
-    where.tipo = sp.tipo as "LINHA_FALTANTE" | "VALOR_DIVERGENTE" | "NF_ABREVIADA" | "CNPJ_DIFERENTE" | "RAZAO_SOCIAL_DIFERENTE" | "LOTE_AUSENTE" | "VOUCHER_SEM_FINALIZACAO" | "OUTRO";
+    where.tipo = sp.tipo;
   }
   if (sp.status === "pendente") where.resolvido = false;
   else if (sp.status === "resolvido") where.resolvido = true;

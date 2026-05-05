@@ -8,8 +8,9 @@ interface Params {
 }
 
 export async function PATCH(req: Request, { params }: Params) {
-  const { session, error } = await requireRole(ROLES_WRITE);
-  if (error) return error;
+  const auth = await requireRole(ROLES_WRITE);
+  if (auth.error) return auth.error;
+  const { session } = auth;
 
   const { id: faturamentoId, divId } = await params;
 
@@ -47,7 +48,7 @@ export async function PATCH(req: Request, { params }: Params) {
     where: { id: divId },
     data: {
       resolvido: true,
-      resolvidoPor: session!.user.name ?? session!.user.email,
+      resolvidoPor: session.user.name ?? session.user.email,
       resolvidoEm: new Date(),
       notasResolucao: notas || null,
     },
@@ -55,7 +56,7 @@ export async function PATCH(req: Request, { params }: Params) {
 
   // Audit log
   await logAudit({
-    userId: session!.user.id,
+    userId: session.user.id,
     action: "divergencia.resolver",
     entity: "Divergencia",
     entityId: divId,

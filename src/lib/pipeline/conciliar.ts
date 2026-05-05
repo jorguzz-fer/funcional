@@ -240,7 +240,7 @@ async function criarDivergencia(data: DivergenciaData) {
       faturamentoId: data.faturamentoId,
       tipo: data.tipo,
       descricao: data.descricao,
-      detalhe: data.detalhe ?? {},
+      detalhe: (data.detalhe ?? {}) as Prisma.InputJsonValue,
       valorAutorizador: data.valorAutorizador ?? null,
       valorProteus: data.valorProteus ?? null,
     },

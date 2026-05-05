@@ -1,4 +1,5 @@
 import * as XLSX from "xlsx";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { limparAutorizador } from "./limparAutorizador";
 import { limparProteus } from "./limparProteus";
@@ -169,26 +170,26 @@ async function salvarPedido(faturamentoId: string, p: PedidoInput): Promise<void
     motivoExclusao: p.motivoExclusao ?? null,
   };
 
-  const uniqueWhere = {
-    faturamentoId_voucher_articulacaoId: {
+  // Check if a Pedido with this voucher+articulacaoId already exists for this faturamento
+  // (supports re-processing without duplicates)
+  const existing = await prisma.pedido.findFirst({
+    where: {
       faturamentoId,
       voucher: p.voucher,
-      articulacaoId: p.articulacaoId ?? "",
+      articulacaoId: p.articulacaoId ?? null,
     },
-  };
+    select: { id: true },
+  });
 
   let savedId: string;
 
-  try {
-    const saved = await prisma.pedido.upsert({
-      where: uniqueWhere,
-      create: pedidoData,
-      update: pedidoData,
-      select: { id: true },
+  if (existing) {
+    await prisma.pedido.update({
+      where: { id: existing.id },
+      data: pedidoData,
     });
-    savedId = saved.id;
-  } catch {
-    // If the compound unique doesn't exist yet in schema, fall back to plain create
+    savedId = existing.id;
+  } else {
     const created = await prisma.pedido.create({
       data: pedidoData,
       select: { id: true },
@@ -203,7 +204,7 @@ async function salvarPedido(faturamentoId: string, p: PedidoInput): Promise<void
         faturamentoId,
         tipo: "LOTE_AUSENTE",
         descricao: `Pedido ${p.voucher} sem número de lote para medicamento que exige rastreabilidade`,
-        detalhe: { pedidoId: savedId, voucher: p.voucher },
+        detalhe: { pedidoId: savedId, voucher: p.voucher } as Prisma.InputJsonValue,
       },
     });
   }

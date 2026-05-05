@@ -185,7 +185,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   // 8. Audit log
   await logAudit({
-    userId: (session!.user.id as string),
+    userId: session!.user!.id as string,
     action: "faturamento.create",
     entity: "Faturamento",
     entityId: faturamento.id,

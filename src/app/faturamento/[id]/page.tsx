@@ -74,7 +74,8 @@ export default async function FaturamentoDetailPage({ params, searchParams }: Pr
   const valorTotalNum = Number(valorTotal._sum.valorUnitario ?? 0);
 
   // Build pedidos filters
-  const where: Parameters<typeof prisma.pedido.findMany>[0]["where"] = {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const where: Record<string, any> = {
     faturamentoId: id,
   };
   if (sp.statusVoucher && sp.statusVoucher !== "todos") {
