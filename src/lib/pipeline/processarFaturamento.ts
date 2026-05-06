@@ -7,15 +7,22 @@ import { executarConciliacao } from "./conciliar";
 import { detectarLinhaHeader } from "./utils";
 import { PedidoInput } from "./types";
 
+interface FileBuffers {
+  autorizador: Buffer;
+  proteus: Buffer;
+}
+
 /**
  * Main pipeline orchestrator.
  *
- * Called asynchronously (fire-and-forget) from the POST /api/faturamento route.
- * Reads both uploaded files, cleans the data, persists Pedidos and
- * OrdemPagamento records, runs conciliation, and updates upload statuses.
+ * Receives in-memory file buffers directly from the API route to avoid
+ * filesystem access issues in containerized environments.
  */
-export async function processarFaturamento(faturamentoId: string): Promise<void> {
-  // 1. Fetch Faturamento and its upload files
+export async function processarFaturamento(
+  faturamentoId: string,
+  buffers: FileBuffers,
+): Promise<void> {
+  // 1. Fetch Faturamento and its upload metadata (IDs needed for status updates)
   const faturamento = await prisma.faturamento.findUnique({
     where: { id: faturamentoId },
     include: { uploads: true },
@@ -30,7 +37,7 @@ export async function processarFaturamento(faturamentoId: string): Promise<void>
   const uploadProteus = faturamento.uploads.find((u) => u.tipo === "PROTEUS");
 
   if (!uploadAutorizador || !uploadProteus) {
-    console.error(`[pipeline] Faturamento ${faturamentoId} sem arquivos de upload`);
+    console.error(`[pipeline] Faturamento ${faturamentoId} sem registros de upload no DB`);
     return;
   }
 
@@ -41,9 +48,8 @@ export async function processarFaturamento(faturamentoId: string): Promise<void>
   });
 
   try {
-    // 3. Parse AUTORIZADOR xlsx
-    // Some exports have 1-2 blank rows before the actual header row.
-    const wbAut = XLSX.readFile(uploadAutorizador.caminho);
+    // 3. Parse AUTORIZADOR xlsx from in-memory buffer (no disk read)
+    const wbAut = XLSX.read(buffers.autorizador, { type: "buffer" });
     const wsAut = wbAut.Sheets[wbAut.SheetNames[0]];
     const headerRowAut = detectarLinhaHeader(wsAut);
     const rowsAut: Record<string, unknown>[] = XLSX.utils.sheet_to_json(wsAut, {
@@ -51,13 +57,12 @@ export async function processarFaturamento(faturamentoId: string): Promise<void>
       range: headerRowAut,
     });
 
-    // 4. Parse PROTEUS xlsx
-    // Skip metadata sheets (e.g. "Parametros") and use the first sheet that has real data.
-    const wbPro = XLSX.readFile(uploadProteus.caminho);
+    // 4. Parse PROTEUS xlsx from in-memory buffer
+    const wbPro = XLSX.read(buffers.proteus, { type: "buffer" });
     const METADATA_SHEETS = ["parametros", "params", "configuracao", "config"];
-    const dataSheetName = wbPro.SheetNames.find(
-      (s) => !METADATA_SHEETS.includes(s.toLowerCase()),
-    ) ?? wbPro.SheetNames[wbPro.SheetNames.length - 1];
+    const dataSheetName =
+      wbPro.SheetNames.find((s) => !METADATA_SHEETS.includes(s.toLowerCase())) ??
+      wbPro.SheetNames[wbPro.SheetNames.length - 1];
     const wsPro = wbPro.Sheets[dataSheetName];
     const headerRowPro = detectarLinhaHeader(wsPro);
     const rowsPro: Record<string, unknown>[] = XLSX.utils.sheet_to_json(wsPro, {

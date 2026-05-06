@@ -130,18 +130,27 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const autorizadorPath = join(uploadDir, `autorizador${autorizadorExt}`);
   const proteusPath = join(uploadDir, `proteus${proteusExt}`);
 
+  // Read file contents into memory — used both for disk backup and in-memory pipeline.
+  let autorizadorBuf: Buffer;
+  let proteusBuf: Buffer;
   try {
-    const [autorizadorBuffer, proteusBuffer] = await Promise.all([
+    const [autorizadorArrayBuffer, proteusArrayBuffer] = await Promise.all([
       autorizadorFile.arrayBuffer(),
       proteusFile.arrayBuffer(),
     ]);
+    autorizadorBuf = Buffer.from(autorizadorArrayBuffer);
+    proteusBuf = Buffer.from(proteusArrayBuffer);
 
+    // Write to disk as backup (best-effort; pipeline does NOT read from disk).
     await Promise.all([
-      writeFile(autorizadorPath, Buffer.from(autorizadorBuffer)),
-      writeFile(proteusPath, Buffer.from(proteusBuffer)),
-    ]);
+      writeFile(autorizadorPath, autorizadorBuf),
+      writeFile(proteusPath, proteusBuf),
+    ]).catch(() => {
+      // Disk write failure is non-fatal: pipeline uses in-memory buffers.
+      console.warn(`[api/faturamento] Backup em disco falhou para uploadDir=${uploadDir}`);
+    });
   } catch {
-    return NextResponse.json({ error: "Erro ao salvar arquivos" }, { status: 500 });
+    return NextResponse.json({ error: "Erro ao ler arquivos" }, { status: 500 });
   }
 
   // Placeholder dataFechamento: 15th of the reference month
@@ -179,8 +188,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     ],
   });
 
-  // 7. Fire-and-forget pipeline
-  processarFaturamento(faturamento.id).catch((err) => {
+  // 7. Fire-and-forget pipeline — passes in-memory buffers to avoid disk read issues.
+  processarFaturamento(faturamento.id, {
+    autorizador: autorizadorBuf,
+    proteus: proteusBuf,
+  }).catch((err) => {
     console.error(`[api/faturamento] Erro no pipeline para ${faturamento.id}:`, err);
   });
 
