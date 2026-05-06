@@ -5,11 +5,6 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import DivergenciaCard from "@/components/Funcional/DivergenciaCard";
 
-const MESES = [
-  "Janeiro","Fevereiro","Março","Abril","Maio","Junho",
-  "Julho","Agosto","Setembro","Outubro","Novembro","Dezembro",
-];
-
 const TIPO_LABEL: Record<string, string> = {
   LINHA_FALTANTE:          "Linha Faltante",
   VALOR_DIVERGENTE:        "Valor Divergente",
@@ -37,12 +32,13 @@ export default async function DivergenciasPage({ params, searchParams }: Props) 
 
   const faturamento = await prisma.faturamento.findUnique({
     where: { id },
-    select: { id: true, mesReferencia: true, anoReferencia: true, status: true },
+    select: { id: true, dataInicio: true, dataFechamento: true, status: true },
   });
 
   if (!faturamento) notFound();
 
-  const periodo = `${MESES[faturamento.mesReferencia - 1]} ${faturamento.anoReferencia}`;
+  const fmt = (d: Date) => d.toLocaleDateString("pt-BR");
+  const periodo = `${fmt(faturamento.dataInicio)} — ${fmt(faturamento.dataFechamento)}`;
 
   // Build filter
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -20,6 +20,14 @@ function isAllowedExtension(filename: string): boolean {
   return ALLOWED_EXTENSIONS.includes(getExtension(filename));
 }
 
+function parseLocalDate(dateStr: string): Date | null {
+  // dateStr is YYYY-MM-DD from <input type="date">; treat as noon UTC to avoid timezone drift
+  const m = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return null;
+  const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12, 0, 0));
+  return isNaN(d.getTime()) ? null : d;
+}
+
 export async function POST(req: NextRequest): Promise<NextResponse> {
   // 1. Auth check
   const auth = await requireRole(ROLES_WRITE);
@@ -39,8 +47,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   const autorizadorFile = formData.get("autorizador");
   const proteusFile = formData.get("proteus");
-  const mesStr = formData.get("mes");
-  const anoStr = formData.get("ano");
+  const dataInicioStr = formData.get("dataInicio");
+  const dataFimStr = formData.get("dataFim");
 
   // 3. Validate required fields
   if (!autorizadorFile || !(autorizadorFile instanceof File)) {
@@ -49,21 +57,27 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   if (!proteusFile || !(proteusFile instanceof File)) {
     return NextResponse.json({ error: "Campo 'proteus' é obrigatório" }, { status: 400 });
   }
-  if (!mesStr || !anoStr) {
+  if (!dataInicioStr || !dataFimStr) {
     return NextResponse.json(
-      { error: "Campos 'mes' e 'ano' são obrigatórios" },
+      { error: "Campos 'dataInicio' e 'dataFim' são obrigatórios" },
       { status: 400 },
     );
   }
 
-  const mes = parseInt(String(mesStr), 10);
-  const ano = parseInt(String(anoStr), 10);
+  const dataInicio = parseLocalDate(String(dataInicioStr));
+  const dataFechamento = parseLocalDate(String(dataFimStr));
 
-  if (isNaN(mes) || mes < 1 || mes > 12) {
-    return NextResponse.json({ error: "Mês inválido (deve ser 1-12)" }, { status: 400 });
+  if (!dataInicio) {
+    return NextResponse.json({ error: "Data de início inválida" }, { status: 400 });
   }
-  if (isNaN(ano) || ano < 2000 || ano > 2100) {
-    return NextResponse.json({ error: "Ano inválido" }, { status: 400 });
+  if (!dataFechamento) {
+    return NextResponse.json({ error: "Data de fechamento inválida" }, { status: 400 });
+  }
+  if (dataInicio > dataFechamento) {
+    return NextResponse.json(
+      { error: "A data de início deve ser anterior à data de fechamento" },
+      { status: 400 },
+    );
   }
 
   // Validate extensions
@@ -98,15 +112,16 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     );
   }
 
-  // Check for existing faturamento for the same mes/ano
+  // Check for existing faturamento for the same period
   const existing = await prisma.faturamento.findUnique({
-    where: { mesReferencia_anoReferencia: { mesReferencia: mes, anoReferencia: ano } },
+    where: { dataInicio_dataFechamento: { dataInicio, dataFechamento } },
     select: { id: true },
   });
   if (existing) {
+    const fmt = (d: Date) => d.toLocaleDateString("pt-BR");
     return NextResponse.json(
       {
-        error: `Já existe um faturamento registrado para ${mes}/${ano}`,
+        error: `Já existe um faturamento registrado para o período ${fmt(dataInicio)} — ${fmt(dataFechamento)}`,
         existingId: existing.id,
       },
       { status: 409 },
@@ -153,14 +168,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "Erro ao ler arquivos" }, { status: 500 });
   }
 
-  // Placeholder dataFechamento: 15th of the reference month
-  const dataFechamento = new Date(Date.UTC(ano, mes - 1, 15));
-
   // 5. Create Faturamento record (status RASCUNHO)
   const faturamento = await prisma.faturamento.create({
     data: {
-      mesReferencia: mes,
-      anoReferencia: ano,
+      dataInicio,
       dataFechamento,
       status: "RASCUNHO",
     },
@@ -203,8 +214,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     entity: "Faturamento",
     entityId: faturamento.id,
     meta: {
-      mes,
-      ano,
+      dataInicio: dataInicio.toISOString(),
+      dataFechamento: dataFechamento.toISOString(),
       autorizador: autorizadorFile.name,
       proteus: proteusFile.name,
     },

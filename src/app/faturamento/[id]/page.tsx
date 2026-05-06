@@ -6,11 +6,6 @@ import { notFound } from "next/navigation";
 import PedidosTable from "@/components/Funcional/PedidosTable";
 import ProcessingBanner from "@/components/Funcional/ProcessingBanner";
 
-const MESES = [
-  "Janeiro","Fevereiro","Março","Abril","Maio","Junho",
-  "Julho","Agosto","Setembro","Outubro","Novembro","Dezembro",
-];
-
 const STATUS_LABEL: Record<string, string> = {
   RASCUNHO:   "Rascunho",
   EM_REVISAO: "Em Revisão",
@@ -56,7 +51,8 @@ export default async function FaturamentoDetailPage({ params, searchParams }: Pr
 
   if (!faturamento) notFound();
 
-  const periodo = `${MESES[faturamento.mesReferencia - 1]} ${faturamento.anoReferencia}`;
+  const fmt = (d: Date) => d.toLocaleDateString("pt-BR");
+  const periodo = `${fmt(faturamento.dataInicio)} — ${fmt(faturamento.dataFechamento)}`;
 
   // Counts for summary cards
   const [totalPedidos, pedidosValidos, pedidosExcluidos, divergenciasPendentes, valorTotal] =

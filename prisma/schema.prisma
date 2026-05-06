@@ -84,8 +84,7 @@ enum TipoMedicamento {
 
 model Faturamento {
   id               String           @id @default(cuid())
-  mesReferencia    Int
-  anoReferencia    Int
+  dataInicio       DateTime
   dataFechamento   DateTime
   status           StatusFaturamento @default(RASCUNHO)
   observacoes      String?
@@ -98,7 +97,7 @@ model Faturamento {
   divergencias     Divergencia[]
   uploads          UploadArquivo[]
 
-  @@unique([mesReferencia, anoReferencia])
+  @@unique([dataInicio, dataFechamento])
 }
 
 enum StatusFaturamento {

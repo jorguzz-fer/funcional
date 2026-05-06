@@ -72,8 +72,8 @@ export async function processarFaturamento(
 
     // 5. Clean data
     const pedidosInput = limparAutorizador(rowsAut, {
-      mesReferencia: faturamento.mesReferencia,
-      anoReferencia: faturamento.anoReferencia,
+      dataInicio: faturamento.dataInicio,
+      dataFechamento: faturamento.dataFechamento,
     });
 
     const ordensInput = limparProteus(rowsPro);

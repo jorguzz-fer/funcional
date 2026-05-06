@@ -7,14 +7,10 @@ export default async function DashboardPage() {
   const session = await auth();
   if (!session) redirect("/login");
 
-  const hoje = new Date();
-  const mes = hoje.getMonth() + 1;
-  const ano = hoje.getFullYear();
-
   const [totalFaturamentos, faturamentoAtual, totalDivergencias] = await Promise.all([
     prisma.faturamento.count(),
     prisma.faturamento.findFirst({
-      where: { mesReferencia: mes, anoReferencia: ano },
+      orderBy: { dataInicio: "desc" },
       include: {
         _count: {
           select: {
@@ -27,13 +23,17 @@ export default async function DashboardPage() {
     prisma.divergencia.count({ where: { resolvido: false } }),
   ]);
 
+  const fmt = (d: Date) => d.toLocaleDateString("pt-BR");
+  const periodo = faturamentoAtual
+    ? `${fmt(faturamentoAtual.dataInicio)} — ${fmt(faturamentoAtual.dataFechamento)}`
+    : "";
+
   return (
     <DashboardKPIs
       totalFaturamentos={totalFaturamentos}
       faturamentoAtual={faturamentoAtual}
       totalDivergenciasPendentes={totalDivergencias}
-      mes={mes}
-      ano={ano}
+      periodo={periodo}
     />
   );
 }

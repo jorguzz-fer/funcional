@@ -21,15 +21,16 @@ export async function GET(req: Request, { params }: Params) {
 
   const faturamento = await prisma.faturamento.findUnique({
     where: { id: faturamentoId },
-    select: { id: true, mesReferencia: true, anoReferencia: true, status: true },
+    select: { id: true, dataInicio: true, dataFechamento: true, status: true },
   });
 
   if (!faturamento) {
     return NextResponse.json({ error: "Faturamento não encontrado" }, { status: 404 });
   }
 
-  const MESES = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
-  const periodo = `${MESES[faturamento.mesReferencia - 1]}_${faturamento.anoReferencia}`;
+  const fmtFile = (d: Date) =>
+    `${String(d.getDate()).padStart(2, "0")}${String(d.getMonth() + 1).padStart(2, "0")}${d.getFullYear()}`;
+  const periodo = `${fmtFile(faturamento.dataInicio)}_${fmtFile(faturamento.dataFechamento)}`;
 
   if (tipo === "funcional") {
     return gerarExportFuncional(faturamentoId, periodo);

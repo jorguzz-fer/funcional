@@ -5,11 +5,6 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import ExportButtons from "@/components/Funcional/ExportButtons";
 
-const MESES = [
-  "Janeiro","Fevereiro","Março","Abril","Maio","Junho",
-  "Julho","Agosto","Setembro","Outubro","Novembro","Dezembro",
-];
-
 interface Props {
   params: Promise<{ id: string }>;
 }
@@ -24,15 +19,16 @@ export default async function ExportPage({ params }: Props) {
     where: { id },
     select: {
       id: true,
-      mesReferencia: true,
-      anoReferencia: true,
+      dataInicio: true,
+      dataFechamento: true,
       status: true,
     },
   });
 
   if (!faturamento) notFound();
 
-  const periodo = `${MESES[faturamento.mesReferencia - 1]} ${faturamento.anoReferencia}`;
+  const fmt = (d: Date) => d.toLocaleDateString("pt-BR");
+  const periodo = `${fmt(faturamento.dataInicio)} — ${fmt(faturamento.dataFechamento)}`;
 
   const divergenciasPendentes = await prisma.divergencia.count({
     where: { faturamentoId: id, resolvido: false },

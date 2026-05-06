@@ -10,11 +10,24 @@ interface FileState {
   proteus: File | null;
 }
 
+function defaultDataInicio(): string {
+  const d = new Date();
+  d.setDate(15);
+  d.setMonth(d.getMonth() - 1);
+  return d.toISOString().slice(0, 10);
+}
+
+function defaultDataFim(): string {
+  const d = new Date();
+  d.setDate(0); // last day of previous month
+  return d.toISOString().slice(0, 10);
+}
+
 export default function UploadFaturamento() {
   const router = useRouter();
   const [files, setFiles] = useState<FileState>({ autorizador: null, proteus: null });
-  const [mes, setMes] = useState(new Date().getMonth() + 1);
-  const [ano, setAno] = useState(new Date().getFullYear());
+  const [dataInicio, setDataInicio] = useState(defaultDataInicio());
+  const [dataFim, setDataFim] = useState(defaultDataFim());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const autRef = useRef<HTMLInputElement>(null);
@@ -30,6 +43,14 @@ export default function UploadFaturamento() {
       setError("Ambas as planilhas são obrigatórias.");
       return;
     }
+    if (!dataInicio || !dataFim) {
+      setError("Período de referência é obrigatório.");
+      return;
+    }
+    if (dataInicio > dataFim) {
+      setError("A data de início deve ser anterior à data de fechamento.");
+      return;
+    }
     setError("");
     setLoading(true);
 
@@ -37,8 +58,8 @@ export default function UploadFaturamento() {
       const formData = new FormData();
       formData.append("autorizador", files.autorizador);
       formData.append("proteus", files.proteus);
-      formData.append("mes", String(mes));
-      formData.append("ano", String(ano));
+      formData.append("dataInicio", dataInicio);
+      formData.append("dataFim", dataFim);
 
       const res = await fetch("/api/faturamento", {
         method: "POST",
@@ -69,7 +90,7 @@ export default function UploadFaturamento() {
           </div>
         )}
 
-        {/* Mês/Ano */}
+        {/* Período */}
         <div className="bg-white dark:bg-[#0d1526] rounded-2xl p-6 border border-gray-100 dark:border-[#1e2d47] shadow-sm">
           <h2 className="text-base font-semibold text-gray-900 dark:text-white mb-4">
             Período de Referência
@@ -77,32 +98,42 @@ export default function UploadFaturamento() {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                Mês
+                Data de Início
               </label>
-              <select
-                value={mes}
-                onChange={(e) => setMes(Number(e.target.value))}
+              <input
+                type="date"
+                value={dataInicio}
+                onChange={(e) => setDataInicio(e.target.value)}
+                required
                 className="w-full px-4 py-2.5 rounded-lg border border-gray-300 dark:border-[#2a3a5c] bg-white dark:bg-[#0a0e19] text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-              >
-                {["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"].map((m, i) => (
-                  <option key={i + 1} value={i + 1}>{m}</option>
-                ))}
-              </select>
+              />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                Ano
+                Data de Fechamento
               </label>
               <input
-                type="number"
-                value={ano}
-                onChange={(e) => setAno(Number(e.target.value))}
-                min={2023}
-                max={2030}
+                type="date"
+                value={dataFim}
+                onChange={(e) => setDataFim(e.target.value)}
+                required
                 className="w-full px-4 py-2.5 rounded-lg border border-gray-300 dark:border-[#2a3a5c] bg-white dark:bg-[#0a0e19] text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
               />
             </div>
           </div>
+          {dataInicio && dataFim && (
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">
+              Somente infusões realizadas entre{" "}
+              <span className="font-medium text-gray-600 dark:text-gray-300">
+                {new Date(dataInicio + "T12:00:00").toLocaleDateString("pt-BR")}
+              </span>{" "}
+              e{" "}
+              <span className="font-medium text-gray-600 dark:text-gray-300">
+                {new Date(dataFim + "T12:00:00").toLocaleDateString("pt-BR")}
+              </span>{" "}
+              serão incluídas.
+            </p>
+          )}
         </div>
 
         {/* Upload Autorizador */}

@@ -3,11 +3,6 @@
 import React from "react";
 import Link from "next/link";
 
-const MESES = [
-  "Janeiro","Fevereiro","Março","Abril","Maio","Junho",
-  "Julho","Agosto","Setembro","Outubro","Novembro","Dezembro",
-];
-
 interface FaturamentoAtual {
   id: string;
   status: string;
@@ -18,18 +13,15 @@ interface Props {
   totalFaturamentos: number;
   faturamentoAtual: FaturamentoAtual | null;
   totalDivergenciasPendentes: number;
-  mes: number;
-  ano: number;
+  periodo: string;
 }
 
 export default function DashboardKPIs({
   totalFaturamentos,
   faturamentoAtual,
   totalDivergenciasPendentes,
-  mes,
-  ano,
+  periodo,
 }: Props) {
-  const mesNome = MESES[mes - 1];
 
   const statusColor: Record<string, string> = {
     RASCUNHO:    "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300",
@@ -55,7 +47,7 @@ export default function DashboardKPIs({
           Dashboard
         </h1>
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-          Faturamento J&amp;J — {mesNome} {ano}
+          Faturamento J&amp;J{periodo ? ` — ${periodo}` : ""}
         </p>
       </div>
 
@@ -75,7 +67,7 @@ export default function DashboardKPIs({
               </span>
             )}
           </div>
-          <p className="text-sm text-gray-500 dark:text-gray-400">Faturamento {mesNome}</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">Faturamento mais recente</p>
           <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
             {faturamentoAtual ? `${faturamentoAtual._count.pedidos} pedidos` : "—"}
           </p>

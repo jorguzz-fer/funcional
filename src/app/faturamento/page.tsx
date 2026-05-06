@@ -3,11 +3,6 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import Link from "next/link";
 
-const MESES = [
-  "Jan","Fev","Mar","Abr","Mai","Jun",
-  "Jul","Ago","Set","Out","Nov","Dez",
-];
-
 const STATUS_LABEL: Record<string, string> = {
   RASCUNHO:   "Rascunho",
   EM_REVISAO: "Em Revisão",
@@ -24,12 +19,17 @@ const STATUS_BADGE: Record<string, string> = {
   CONCLUIDO:  "bg-green-100 text-green-700",
 };
 
+function formatPeriodo(dataInicio: Date, dataFechamento: Date): string {
+  const fmt = (d: Date) => d.toLocaleDateString("pt-BR");
+  return `${fmt(dataInicio)} — ${fmt(dataFechamento)}`;
+}
+
 export default async function FaturamentoListPage() {
   const session = await auth();
   if (!session) redirect("/login");
 
   const faturamentos = await prisma.faturamento.findMany({
-    orderBy: [{ anoReferencia: "desc" }, { mesReferencia: "desc" }],
+    orderBy: { dataInicio: "desc" },
     include: {
       _count: {
         select: {
@@ -46,7 +46,7 @@ export default async function FaturamentoListPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Faturamento</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            Histórico de fechamentos mensais J&amp;J
+            Histórico de fechamentos J&amp;J
           </p>
         </div>
         <Link
@@ -65,7 +65,7 @@ export default async function FaturamentoListPage() {
           </span>
           <p className="text-gray-500 dark:text-gray-400 font-medium">Nenhum faturamento ainda</p>
           <p className="text-sm text-gray-400 mt-1 mb-4">
-            Inicie o primeiro fechamento mensal
+            Inicie o primeiro fechamento
           </p>
           <Link
             href="/faturamento/novo"
@@ -104,7 +104,7 @@ export default async function FaturamentoListPage() {
                   className="border-b border-gray-50 dark:border-[#1a2540] hover:bg-gray-50 dark:hover:bg-[#0f1c35] transition"
                 >
                   <td className="px-6 py-4 font-medium text-gray-900 dark:text-white">
-                    {MESES[fat.mesReferencia - 1]} {fat.anoReferencia}
+                    {formatPeriodo(fat.dataInicio, fat.dataFechamento)}
                   </td>
                   <td className="px-6 py-4">
                     <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${STATUS_BADGE[fat.status] ?? ""}`}>

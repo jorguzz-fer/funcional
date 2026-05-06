@@ -8,8 +8,8 @@ import {
 } from "./utils";
 
 interface FaturamentoRef {
-  mesReferencia: number;
-  anoReferencia: number;
+  dataInicio: Date;
+  dataFechamento: Date;
 }
 
 /**
@@ -64,15 +64,6 @@ function getCell(row: Record<string, unknown>, header: string | undefined): unkn
 }
 
 /**
- * Calculates the placeholder "data de fechamento" as the 15th day of the
- * reference month/year. In production this should be replaced by the actual
- * business-day calculation (10th business day of the month).
- */
-function calcularDataFechamentoPlaceholder(mes: number, ano: number): Date {
-  return new Date(Date.UTC(ano, mes - 1, 15));
-}
-
-/**
  * Detects whether a row represents an exam (EXAME) or infusion (INFUSAO)
  * based on the "nome do exame" column value.
  */
@@ -96,7 +87,7 @@ function exigeLote(nomeExame: unknown): boolean {
  *
  * @param rows   Raw rows parsed from the xlsx file (one object per row,
  *               keys are column headers).
- * @param faturamento  Reference month/year used to compute AGE.
+ * @param faturamento  Date range used to filter infusions.
  * @returns      Array of PedidoInput ready for persistence.
  */
 export function limparAutorizador(
@@ -109,10 +100,7 @@ export function limparAutorizador(
   const headers = Object.keys(rows[0]);
   const col = resolveHeaders(headers);
 
-  const dataFechamento = calcularDataFechamentoPlaceholder(
-    faturamento.mesReferencia,
-    faturamento.anoReferencia,
-  );
+  const { dataInicio, dataFechamento } = faturamento;
 
   return rows.map((row): PedidoInput => {
     const voucher = String(getCell(row, col.voucher) ?? "").trim();
@@ -136,7 +124,7 @@ export function limparAutorizador(
 
     const cnpjClinica = normalizarCnpj(cnpjRaw != null ? String(cnpjRaw) : null);
 
-    // AGE: days between infusion date and the reference closing date
+    // AGE: days between infusion date and the reference closing date (informational)
     let ageDias: number | null = null;
     if (dataInfusao) {
       const diffMs = dataFechamento.getTime() - dataInfusao.getTime();
@@ -145,111 +133,7 @@ export function limparAutorizador(
 
     const tipo = detectarTipo(nomeExame);
 
-    // ─── Exclusion filters ─────────────────────────────────────────────────
-    if (ageDias !== null && ageDias > 90) {
-      return {
-        voucher,
-        codigoPaciente,
-        dataInfusao,
-        dataFinalizacaoVoucher,
-        dataFaturamento,
-        ageDias,
-        statusVoucher: statusVoucher || null,
-        lote,
-        valorUnitario,
-        codigoOrdemPagamento,
-        statusOrdemPagamento,
-        cnpjClinica,
-        nomeClinica,
-        numeroNotaFiscal,
-        articulacaoId,
-        dsp,
-        tipo,
-        excluido: true,
-        motivoExclusao: "Fora do prazo (>90 dias)",
-      };
-    }
-
-    if (statusVoucher === "CONSULTADO") {
-      return {
-        voucher,
-        codigoPaciente,
-        dataInfusao,
-        dataFinalizacaoVoucher,
-        dataFaturamento,
-        ageDias,
-        statusVoucher,
-        lote,
-        valorUnitario,
-        codigoOrdemPagamento,
-        statusOrdemPagamento,
-        cnpjClinica,
-        nomeClinica,
-        numeroNotaFiscal,
-        articulacaoId,
-        dsp,
-        tipo,
-        excluido: true,
-        motivoExclusao: "Voucher consultado",
-      };
-    }
-
-    if (statusVoucher === "GLOSADO") {
-      return {
-        voucher,
-        codigoPaciente,
-        dataInfusao,
-        dataFinalizacaoVoucher,
-        dataFaturamento,
-        ageDias,
-        statusVoucher,
-        lote,
-        valorUnitario,
-        codigoOrdemPagamento,
-        statusOrdemPagamento,
-        cnpjClinica,
-        nomeClinica,
-        numeroNotaFiscal,
-        articulacaoId,
-        dsp,
-        tipo,
-        excluido: true,
-        motivoExclusao: "Voucher glosado",
-      };
-    }
-
-    // No ordem de pagamento AND no data de finalizacao
-    if (!codigoOrdemPagamento && !dataFinalizacaoVoucher) {
-      return {
-        voucher,
-        codigoPaciente,
-        dataInfusao,
-        dataFinalizacaoVoucher,
-        dataFaturamento,
-        ageDias,
-        statusVoucher: statusVoucher || null,
-        lote,
-        valorUnitario,
-        codigoOrdemPagamento,
-        statusOrdemPagamento,
-        cnpjClinica,
-        nomeClinica,
-        numeroNotaFiscal,
-        articulacaoId,
-        dsp,
-        tipo,
-        excluido: true,
-        motivoExclusao: "Sem finalização",
-      };
-    }
-
-    // ─── Alerts (non-excluding) ────────────────────────────────────────────
-    const alertas: string[] = [];
-    if (exigeLote(nomeExame) && !lote) {
-      alertas.push("LOTE_AUSENTE");
-    }
-
-    return {
+    const baseFields = {
       voucher,
       codigoPaciente,
       dataInfusao,
@@ -267,8 +151,34 @@ export function limparAutorizador(
       articulacaoId,
       dsp,
       tipo,
-      excluido: false,
-      alertas,
     };
+
+    // ─── Exclusion filters ─────────────────────────────────────────────────
+
+    // Infusion date outside the billing period
+    if (dataInfusao && (dataInfusao < dataInicio || dataInfusao > dataFechamento)) {
+      return { ...baseFields, excluido: true, motivoExclusao: "Fora do período de faturamento" };
+    }
+
+    if (statusVoucher === "CONSULTADO") {
+      return { ...baseFields, excluido: true, motivoExclusao: "Voucher consultado" };
+    }
+
+    if (statusVoucher === "GLOSADO") {
+      return { ...baseFields, excluido: true, motivoExclusao: "Voucher glosado" };
+    }
+
+    // No ordem de pagamento AND no data de finalizacao
+    if (!codigoOrdemPagamento && !dataFinalizacaoVoucher) {
+      return { ...baseFields, excluido: true, motivoExclusao: "Sem finalização" };
+    }
+
+    // ─── Alerts (non-excluding) ────────────────────────────────────────────
+    const alertas: string[] = [];
+    if (exigeLote(nomeExame) && !lote) {
+      alertas.push("LOTE_AUSENTE");
+    }
+
+    return { ...baseFields, excluido: false, alertas };
   });
 }
