@@ -6,6 +6,7 @@ import Link from "next/link";
 const ACTION_LABEL: Record<string, string> = {
   "faturamento.create": "Criou Faturamento",
   "faturamento.delete": "Deletou Faturamento",
+  "faturamento.export": "Exportou Planilha",
   "usuario.create":    "Criou Usuário",
   "usuario.update":    "Atualizou Usuário",
   "usuario.delete":    "Deletou Usuário",

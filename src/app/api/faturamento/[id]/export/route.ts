@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireRole, ROLES_READ } from "@/lib/authz";
+import { logAudit, getClientIp } from "@/lib/audit";
 import * as XLSX from "xlsx";
 
 interface Params {
@@ -31,6 +32,15 @@ export async function GET(req: Request, { params }: Params) {
   const fmtFile = (d: Date) =>
     `${String(d.getDate()).padStart(2, "0")}${String(d.getMonth() + 1).padStart(2, "0")}${d.getFullYear()}`;
   const periodo = `${fmtFile(faturamento.dataInicio)}_${fmtFile(faturamento.dataFechamento)}`;
+
+  await logAudit({
+    userId: auth.session.user.id,
+    action: "faturamento.export",
+    entity: "Faturamento",
+    entityId: faturamentoId,
+    meta: { tipo, periodo },
+    ip: getClientIp(req),
+  });
 
   if (tipo === "funcional") {
     return gerarExportFuncional(faturamentoId, periodo);
