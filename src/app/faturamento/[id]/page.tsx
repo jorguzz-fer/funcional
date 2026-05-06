@@ -61,13 +61,14 @@ export default async function FaturamentoDetailPage({ params, searchParams }: Pr
       prisma.pedido.count({ where: { faturamentoId: id, excluido: false } }),
       prisma.pedido.count({ where: { faturamentoId: id, excluido: true } }),
       prisma.divergencia.count({ where: { faturamentoId: id, resolvido: false } }),
-      prisma.pedido.aggregate({
-        where: { faturamentoId: id, excluido: false },
-        _sum: { valorUnitario: true },
+      // Sum from Proteus (OrdemPagamento) — this is the actual billing amount
+      prisma.ordemPagamento.aggregate({
+        where: { faturamentoId: id },
+        _sum: { valorTotal: true },
       }),
     ]);
 
-  const valorTotalNum = Number(valorTotal._sum.valorUnitario ?? 0);
+  const valorTotalNum = Number(valorTotal._sum.valorTotal ?? 0);
 
   // Build pedidos filters
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

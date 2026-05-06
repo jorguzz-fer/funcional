@@ -29,7 +29,7 @@ const COLUMN_MAP = {
   // matching "Status_Ordem_Pagamento" instead of "Status_Pedido"
   statusVoucher: ["status pedido", "status do pedido", "status voucher", "status"],
   lote: ["lote"],
-  valorUnitario: ["valor unitario", "vlr.unitario", "vlr unitario", "valor liquido", "valor"],
+  valorUnitario: ["valor unitario", "vlr.unitario", "vlr unitario", "valor liquido"],
   // "PO" is the purchase order code in the Clínicas e Labs export
   codigoOrdemPagamento: ["po", "cod. ordem pagamento", "cod ordem pagamento", "codigo da ordem", "codigo da ordem de pagamento", "codigo ordem"],
   statusOrdemPagamento: ["status da ordem", "status ordem pagamento", "status ordem"],
