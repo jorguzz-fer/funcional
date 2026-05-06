@@ -113,9 +113,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     );
   }
 
-  // 4. Save files to disk under ./uploads/<uuid>/
+  // 4. Save files to disk under /tmp/uploads/<uuid>/
+  // /tmp is always writable in Docker containers, unlike /app which may be read-only.
   const uploadId = randomUUID();
-  const uploadDir = join(process.cwd(), "uploads", uploadId);
+  const uploadDir = join("/tmp", "uploads", uploadId);
 
   try {
     await mkdir(uploadDir, { recursive: true });
