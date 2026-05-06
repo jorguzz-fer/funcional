@@ -2,6 +2,7 @@
 
 import React, { useState, ReactNode } from "react";
 import { usePathname } from "next/navigation";
+import { SessionProvider } from "next-auth/react";
 import FuncionalSidebar from "@/components/Funcional/FuncionalSidebar";
 import Header from "@/components/Layout/Header";
 import Footer from "@/components/Layout/Footer";
@@ -21,19 +22,21 @@ const LayoutProvider: React.FC<LayoutProviderProps> = ({ children }) => {
   const isPublicRoute = PUBLIC_ROUTES.some((r) => pathname.startsWith(r));
 
   return (
-    <div className={`main-content-wrap transition-all ${active ? "active" : ""}`}>
-      {!isPublicRoute && (
-        <>
-          <FuncionalSidebar toggleActive={toggleActive} />
-          <Header toggleActive={toggleActive} />
-        </>
-      )}
+    <SessionProvider>
+      <div className={`main-content-wrap transition-all ${active ? "active" : ""}`}>
+        {!isPublicRoute && (
+          <>
+            <FuncionalSidebar toggleActive={toggleActive} />
+            <Header toggleActive={toggleActive} />
+          </>
+        )}
 
-      <div className="main-content transition-all flex flex-col overflow-hidden min-h-screen">
-        {children}
-        {!isPublicRoute && <Footer />}
+        <div className="main-content transition-all flex flex-col overflow-hidden min-h-screen">
+          {children}
+          {!isPublicRoute && <Footer />}
+        </div>
       </div>
-    </div>
+    </SessionProvider>
   );
 };
 
