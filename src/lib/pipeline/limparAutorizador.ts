@@ -133,9 +133,12 @@ export function limparAutorizador(
 
     const tipo = detectarTipo(nomeExame);
 
+    const nomeExameStr = nomeExame != null ? String(nomeExame).trim() || null : null;
+
     const baseFields = {
       voucher,
       codigoPaciente,
+      nomeExame: nomeExameStr,
       dataInfusao,
       dataFinalizacaoVoucher,
       dataFaturamento,

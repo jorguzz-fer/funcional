@@ -175,6 +175,7 @@ async function salvarPedido(faturamentoId: string, p: PedidoInput): Promise<void
     voucher: p.voucher,
     articulacaoId: p.articulacaoId ?? null,
     codigoPaciente: p.codigoPaciente,
+    nomeExame: p.nomeExame ?? null,
     dataInfusao: p.dataInfusao ?? null,
     dataFinalizacaoVoucher: p.dataFinalizacaoVoucher ?? null,
     dataFaturamento: p.dataFaturamento ?? null,

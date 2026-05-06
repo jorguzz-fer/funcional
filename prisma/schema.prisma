@@ -143,6 +143,7 @@ model Pedido {
   voucher               String
   articulacaoId         String?
   codigoPaciente        String         // BR-A ou DSP (nunca nome/CPF direto — LGPD)
+  nomeExame             String?
   medicamentoId         String?
   servico               String?
   procedimento          String?

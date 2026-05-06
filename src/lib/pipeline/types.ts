@@ -4,6 +4,7 @@ export interface PedidoInput {
   voucher: string;
   articulacaoId?: string | null;
   codigoPaciente: string;
+  nomeExame?: string | null;
   dataInfusao?: Date | null;
   dataFinalizacaoVoucher?: Date | null;
   dataFaturamento?: Date | null;
