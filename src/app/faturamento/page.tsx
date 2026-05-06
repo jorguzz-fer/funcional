@@ -2,6 +2,7 @@ import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import Link from "next/link";
+import DeleteFaturamentoButton from "@/components/Funcional/DeleteFaturamentoButton";
 
 const STATUS_LABEL: Record<string, string> = {
   RASCUNHO:   "Rascunho",
@@ -27,6 +28,8 @@ function formatPeriodo(dataInicio: Date, dataFechamento: Date): string {
 export default async function FaturamentoListPage() {
   const session = await auth();
   if (!session) redirect("/login");
+
+  const isAdmin = (session.user as { role?: string }).role === "ADMIN";
 
   const faturamentos = await prisma.faturamento.findMany({
     orderBy: { dataInicio: "desc" },
@@ -98,37 +101,45 @@ export default async function FaturamentoListPage() {
               </tr>
             </thead>
             <tbody>
-              {faturamentos.map((fat) => (
-                <tr
-                  key={fat.id}
-                  className="border-b border-gray-50 dark:border-[#1a2540] hover:bg-gray-50 dark:hover:bg-[#0f1c35] transition"
-                >
-                  <td className="px-6 py-4 font-medium text-gray-900 dark:text-white">
-                    {formatPeriodo(fat.dataInicio, fat.dataFechamento)}
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${STATUS_BADGE[fat.status] ?? ""}`}>
-                      {STATUS_LABEL[fat.status] ?? fat.status}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-center text-gray-600 dark:text-gray-300">
-                    {fat._count.pedidos}
-                  </td>
-                  <td className="px-6 py-4 text-center">
-                    <span className={fat._count.divergencias > 0 ? "text-red-600 dark:text-red-400 font-semibold" : "text-green-600 dark:text-green-400"}>
-                      {fat._count.divergencias > 0 ? `⚠ ${fat._count.divergencias}` : "✓ 0"}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <Link
-                      href={`/faturamento/${fat.id}`}
-                      className="text-primary-500 hover:underline font-medium"
-                    >
-                      Abrir →
-                    </Link>
-                  </td>
-                </tr>
-              ))}
+              {faturamentos.map((fat) => {
+                const periodo = formatPeriodo(fat.dataInicio, fat.dataFechamento);
+                return (
+                  <tr
+                    key={fat.id}
+                    className="border-b border-gray-50 dark:border-[#1a2540] hover:bg-gray-50 dark:hover:bg-[#0f1c35] transition"
+                  >
+                    <td className="px-6 py-4 font-medium text-gray-900 dark:text-white">
+                      {periodo}
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${STATUS_BADGE[fat.status] ?? ""}`}>
+                        {STATUS_LABEL[fat.status] ?? fat.status}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-center text-gray-600 dark:text-gray-300">
+                      {fat._count.pedidos}
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      <span className={fat._count.divergencias > 0 ? "text-red-600 dark:text-red-400 font-semibold" : "text-green-600 dark:text-green-400"}>
+                        {fat._count.divergencias > 0 ? `⚠ ${fat._count.divergencias}` : "✓ 0"}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <div className="inline-flex items-center justify-end gap-1">
+                        <Link
+                          href={`/faturamento/${fat.id}`}
+                          className="text-primary-500 hover:underline font-medium"
+                        >
+                          Abrir →
+                        </Link>
+                        {isAdmin && (
+                          <DeleteFaturamentoButton id={fat.id} periodo={periodo} />
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
