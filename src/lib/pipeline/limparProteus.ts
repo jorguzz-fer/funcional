@@ -5,11 +5,16 @@ import { normalizarCnpj, parsearValor, encontrarColuna } from "./utils";
  * Column mapping definitions for the Proteus spreadsheet.
  */
 const COLUMN_MAP = {
-  codigoOrdem: ["codigo da ordem", "codigo op", "codigo ordem", "op"],
-  numeroNotaFiscal: ["numero da nota", "numero nota fiscal", "nf", "nota fiscal", "numero nf"],
-  valorTotal: ["valor total", "valor"],
-  razaoSocial: ["razao social", "nome"],
-  cnpj: ["cnpj"],
+  // "Documento" is the SAP payment document (= ordem de pagamento code in Proteus exports)
+  codigoOrdem: ["codigo da ordem", "codigo op", "codigo ordem", "op", "documento"],
+  // "NF Original" is the NF number in Proteus/SAP exports
+  numeroNotaFiscal: ["nf original", "numero da nota", "numero nota fiscal", "nota fiscal", "numero nf", "nf"],
+  // "Vlr.Total" is the abbreviation used in Proteus/SAP exports
+  valorTotal: ["vlr.total", "vlr total", "valor total", "valor"],
+  // "Rz.Social" is the abbreviation used in Proteus/SAP exports
+  razaoSocial: ["rz.social", "rz social", "razao social", "nome"],
+  // "CNPJ/CPF" is the combined field in Proteus/SAP exports
+  cnpj: ["cnpj/cpf", "cnpj"],
   status: ["status"],
 } as const;
 

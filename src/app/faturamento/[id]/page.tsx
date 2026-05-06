@@ -117,8 +117,8 @@ export default async function FaturamentoDetailPage({ params, searchParams }: Pr
 
   return (
     <div className="p-[25px]">
-      {/* Processing banner for RASCUNHO status */}
-      {faturamento.status === "RASCUNHO" && (
+      {/* Processing banner while pipeline is running */}
+      {(faturamento.status === "RASCUNHO" || faturamento.status === "EM_REVISAO") && (
         <ProcessingBanner faturamentoId={id} />
       )}
 

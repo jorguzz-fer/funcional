@@ -19,21 +19,26 @@ interface FaturamentoRef {
  */
 const COLUMN_MAP = {
   voucher: ["voucher", "codigo de autorizacao", "codigo autorizacao"],
-  codigoPaciente: ["codigo do paciente", "codigo paciente", "bra", "dsp"],
-  dataInfusao: ["data de infusao", "data infusao"],
-  dataFinalizacaoVoucher: ["data de finalizacao", "data finalizacao", "data finalizacao voucher"],
+  codigoPaciente: ["codigo do paciente", "codigo paciente", "codigo paciente", "bra"],
+  // "Data Utilização" (Clínicas e Labs export) or "Data_Infusao" (faturamento export)
+  dataInfusao: ["data de infusao", "data infusao", "data utilizacao"],
+  // "Data da finalização" or "Data do Envio NF" (Clínicas e Labs format — NF sent = finalized)
+  dataFinalizacaoVoucher: ["data de finalizacao", "data finalizacao", "data finalizacao voucher", "data da finalizacao", "data do envio nf", "data envio nf"],
   dataFaturamento: ["data de faturamento", "data faturamento"],
-  statusVoucher: ["status"],
+  // Use more specific candidates before the broad "status" fallback to avoid
+  // matching "Status_Ordem_Pagamento" instead of "Status_Pedido"
+  statusVoucher: ["status pedido", "status do pedido", "status voucher", "status"],
   lote: ["lote"],
-  valorUnitario: ["valor", "valor unitario"],
-  codigoOrdemPagamento: ["codigo da ordem", "codigo da ordem de pagamento", "codigo ordem"],
-  statusOrdemPagamento: ["status da ordem", "status ordem"],
-  nomeExame: ["nome do exame", "nome exame", "exame"],
-  cnpjClinica: ["cnpj", "cnpj de faturamento"],
-  nomeClinica: ["nome da clinica", "nome fantasia", "clinica"],
+  valorUnitario: ["valor unitario", "vlr.unitario", "vlr unitario", "valor liquido", "valor"],
+  // "PO" is the purchase order code in the Clínicas e Labs export
+  codigoOrdemPagamento: ["po", "cod. ordem pagamento", "cod ordem pagamento", "codigo da ordem", "codigo da ordem de pagamento", "codigo ordem"],
+  statusOrdemPagamento: ["status da ordem", "status ordem pagamento", "status ordem"],
+  nomeExame: ["nome do exame", "nome exame", "exame", "servico", "procedimento"],
+  cnpjClinica: ["cnpj faturamento", "cnpj de faturamento", "cnpj utilizacao", "cnpj"],
+  nomeClinica: ["nome da clinica utilizacao", "nome da clinica", "nome fantasia", "clinica"],
   numeroNotaFiscal: ["numero da nota fiscal", "numero nota fiscal", "nota fiscal", "nf"],
-  articulacaoId: ["articulacao", "articulacao id", "id articulacao"],
-  dsp: ["dsp", "diagnostico"],
+  articulacaoId: ["articulacao", "articulacao id", "id articulacao", "id pedido"],
+  dsp: ["dsp/psp", "dsp", "diagnostico"],
 } as const;
 
 type FieldKey = keyof typeof COLUMN_MAP;

@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { limparAutorizador } from "./limparAutorizador";
 import { limparProteus } from "./limparProteus";
 import { executarConciliacao } from "./conciliar";
+import { detectarLinhaHeader } from "./utils";
 import { PedidoInput } from "./types";
 
 /**
@@ -41,14 +42,28 @@ export async function processarFaturamento(faturamentoId: string): Promise<void>
 
   try {
     // 3. Parse AUTORIZADOR xlsx
+    // Some exports have 1-2 blank rows before the actual header row.
     const wbAut = XLSX.readFile(uploadAutorizador.caminho);
     const wsAut = wbAut.Sheets[wbAut.SheetNames[0]];
-    const rowsAut: Record<string, unknown>[] = XLSX.utils.sheet_to_json(wsAut, { defval: "" });
+    const headerRowAut = detectarLinhaHeader(wsAut);
+    const rowsAut: Record<string, unknown>[] = XLSX.utils.sheet_to_json(wsAut, {
+      defval: "",
+      range: headerRowAut,
+    });
 
     // 4. Parse PROTEUS xlsx
+    // Skip metadata sheets (e.g. "Parametros") and use the first sheet that has real data.
     const wbPro = XLSX.readFile(uploadProteus.caminho);
-    const wsPro = wbPro.Sheets[wbPro.SheetNames[0]];
-    const rowsPro: Record<string, unknown>[] = XLSX.utils.sheet_to_json(wsPro, { defval: "" });
+    const METADATA_SHEETS = ["parametros", "params", "configuracao", "config"];
+    const dataSheetName = wbPro.SheetNames.find(
+      (s) => !METADATA_SHEETS.includes(s.toLowerCase()),
+    ) ?? wbPro.SheetNames[wbPro.SheetNames.length - 1];
+    const wsPro = wbPro.Sheets[dataSheetName];
+    const headerRowPro = detectarLinhaHeader(wsPro);
+    const rowsPro: Record<string, unknown>[] = XLSX.utils.sheet_to_json(wsPro, {
+      defval: "",
+      range: headerRowPro,
+    });
 
     // 5. Clean data
     const pedidosInput = limparAutorizador(rowsAut, {

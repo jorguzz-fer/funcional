@@ -1,6 +1,7 @@
 /**
  * Pipeline utility functions shared across limparAutorizador, limparProteus, and conciliar.
  */
+import * as XLSX from "xlsx";
 
 /**
  * Normalizes a Brazilian CNPJ string.
@@ -105,7 +106,23 @@ export function normalizarTexto(raw: unknown): string {
     .trim()
     .toLowerCase()
     .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "");
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/_/g, " ");
+}
+
+/**
+ * Finds the first row in a worksheet that looks like a header row
+ * (has at least 3 non-empty string cells). Some Autorizador exports have
+ * 1-2 blank rows before the actual column headers.
+ */
+export function detectarLinhaHeader(ws: XLSX.WorkSheet): number {
+  const raw = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: "" });
+  for (let i = 0; i < Math.min(20, raw.length); i++) {
+    const row = raw[i] as unknown[];
+    const stringCells = row.filter((v) => typeof v === "string" && v.trim().length > 1);
+    if (stringCells.length >= 3) return i;
+  }
+  return 0;
 }
 
 /**
@@ -124,11 +141,13 @@ export function encontrarColuna(headers: string[], candidatos: string[]): string
     }
   }
 
-  // Substring containment (header contains candidate or vice-versa)
+  // Substring containment: the header must CONTAIN the candidate (not vice versa)
+  // to avoid short headers (e.g. "Voucher") matching long candidates (e.g. "status voucher").
+  // Require candidates to be at least 4 chars to avoid spurious single-word matches.
   for (const header of headers) {
     const norm = normalizarTexto(header);
     for (const cand of normalizedCandidatos) {
-      if (norm.includes(cand) || cand.includes(norm)) {
+      if (cand.length >= 4 && norm.includes(cand)) {
         return header;
       }
     }
