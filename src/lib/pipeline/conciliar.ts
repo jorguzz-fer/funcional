@@ -5,24 +5,25 @@ import { normalizarCnpj, normalizarTexto } from "./utils";
 /**
  * Executes the conciliation logic for a given Faturamento.
  *
- * For each group of Pedidos sharing the same codigoOrdemPagamento:
- *  1. Sums valorUnitario across all pedidos in the group.
- *  2. Looks up the matching OrdemPagamento by codigoOrdem.
- *  3. Creates or updates a Conciliacao record with the appropriate status.
- *  4. Creates Divergencia records for detected discrepancies.
+ * Match strategy (as described by the Funcional team):
+ *   PRIMARY   — numeroNotaFiscal (Autorizador) ↔ numeroNotaFiscal (Proteus)
+ *               "a gente usa a nota fiscal de referência" — Gabi
+ *   FALLBACK  — codigoOrdemPagamento (Autorizador) ↔ codigoOrdem (Proteus)
+ *               used when a pedido has no NF yet.
+ *
+ * Pedidos are grouped by their match key so the sum of valorUnitario
+ * across the group can be compared against the single OrdemPagamento.valorTotal.
  */
 export async function executarConciliacao(faturamentoId: string): Promise<void> {
-  // 1. Fetch all non-excluded Pedidos and all OrdemPagamento for this faturamento
+  // ── 1. Load data ───────────────────────────────────────────────────────────
   const pedidos = await prisma.pedido.findMany({
     where: { faturamentoId, excluido: false },
     select: {
       id: true,
       codigoOrdemPagamento: true,
-      valorUnitario: true,
       numeroNotaFiscal: true,
-      clinica: {
-        select: { cnpj: true },
-      },
+      valorUnitario: true,
+      clinica: { select: { cnpj: true } },
     },
   });
 
@@ -31,67 +32,98 @@ export async function executarConciliacao(faturamentoId: string): Promise<void> 
     select: {
       id: true,
       codigoOrdem: true,
-      valorTotal: true,
       numeroNotaFiscal: true,
+      valorTotal: true,
       cnpj: true,
     },
   });
 
-  // Build a lookup map: codigoOrdem → OrdemPagamento
+  // ── 2. Build lookup maps for OrdemPagamento ────────────────────────────────
+  // PRIMARY: by normalized NF
+  const ordemPorNF = new Map<string, (typeof ordens)[number]>();
+  // FALLBACK: by codigoOrdem
   const ordemPorCodigo = new Map<string, (typeof ordens)[number]>();
+
   for (const ordem of ordens) {
+    const nfKey = normalizarNF(ordem.numeroNotaFiscal);
+    if (nfKey) ordemPorNF.set(nfKey, ordem);
+
     if (ordem.codigoOrdem) {
       ordemPorCodigo.set(ordem.codigoOrdem.trim(), ordem);
     }
   }
 
-  // 2. Group Pedidos by codigoOrdemPagamento
-  const grupos = new Map<string, (typeof pedidos)[number][]>();
-  const semOrdem: (typeof pedidos)[number][] = [];
+  // ── 3. Group Pedidos by match key ─────────────────────────────────────────
+  type MatchType = "NF" | "CODIGO" | "NENHUM";
+  interface Grupo {
+    pedidos: (typeof pedidos)[number][];
+    matchType: MatchType;
+    matchKey: string;
+  }
+
+  const grupos = new Map<string, Grupo>();
 
   for (const pedido of pedidos) {
-    if (!pedido.codigoOrdemPagamento) {
-      semOrdem.push(pedido);
+    const nfKey  = normalizarNF(pedido.numeroNotaFiscal);
+    const codKey = pedido.codigoOrdemPagamento?.trim();
+
+    if (nfKey) {
+      const gKey = `NF:${nfKey}`;
+      if (!grupos.has(gKey)) grupos.set(gKey, { pedidos: [], matchType: "NF", matchKey: nfKey });
+      grupos.get(gKey)!.pedidos.push(pedido);
+    } else if (codKey) {
+      const gKey = `COD:${codKey}`;
+      if (!grupos.has(gKey)) grupos.set(gKey, { pedidos: [], matchType: "CODIGO", matchKey: codKey });
+      grupos.get(gKey)!.pedidos.push(pedido);
+    } else {
+      // No NF and no codigoOrdemPagamento → cannot match
+      const gKey = `NENHUM:${pedido.id}`;
+      grupos.set(gKey, { pedidos: [pedido], matchType: "NENHUM", matchKey: "" });
+    }
+  }
+
+  // ── 4. Process each group ─────────────────────────────────────────────────
+  for (const grupo of grupos.values()) {
+    const { pedidos: gruPedidos, matchType, matchKey } = grupo;
+
+    // Pedidos without any match key
+    if (matchType === "NENHUM") {
+      const pedido = gruPedidos[0];
+      await upsertConciliacao({
+        faturamentoId,
+        pedidoId: pedido.id,
+        ordemId: null,
+        status: "ATENCAO",
+        valorAutorizador: null,
+        valorProteus: null,
+        diferenca: null,
+      });
+      await criarDivergencia({
+        faturamentoId,
+        tipo: "LINHA_FALTANTE",
+        descricao: "Pedido sem nota fiscal nem código de ordem — não foi possível conciliar",
+        detalhe: { pedidoId: pedido.id },
+      });
       continue;
     }
-    const key = pedido.codigoOrdemPagamento.trim();
-    if (!grupos.has(key)) grupos.set(key, []);
-    grupos.get(key)!.push(pedido);
-  }
 
-  // Process pedidos without a codigoOrdemPagamento → LINHA_FALTANTE divergence
-  for (const pedido of semOrdem) {
-    await upsertConciliacao({
-      faturamentoId,
-      pedidoId: pedido.id,
-      ordemId: null,
-      status: "ATENCAO",
-      valorAutorizador: null,
-      valorProteus: null,
-      diferenca: null,
-    });
+    // Find the matching OrdemPagamento
+    const ordem = matchType === "NF"
+      ? ordemPorNF.get(matchKey)
+      : ordemPorCodigo.get(matchKey);
 
-    await criarDivergencia({
-      faturamentoId,
-      tipo: "LINHA_FALTANTE",
-      descricao: "Pedido sem código de ordem de pagamento",
-      detalhe: { pedidoId: pedido.id },
-    });
-  }
-
-  // 3. Process each grupo
-  for (const [codigoOrdem, gruPedidos] of grupos.entries()) {
-    // Sum valorUnitario for the group
-    const somaPedidos = gruPedidos.reduce((acc, p) => {
-      const val = p.valorUnitario ? Number(p.valorUnitario) : 0;
-      return acc + val;
-    }, 0);
-
-    const ordem = ordemPorCodigo.get(codigoOrdem);
+    const somaPedidos = gruPedidos.reduce(
+      (acc, p) => acc + (p.valorUnitario ? Number(p.valorUnitario) : 0),
+      0,
+    );
 
     for (const pedido of gruPedidos) {
       if (!ordem) {
-        // Ordem not found in Proteus → LINHA_FALTANTE
+        // Ordem not found in Proteus
+        const descricao = matchType === "NF"
+          ? `NF "${pedido.numeroNotaFiscal}" não encontrada no Proteus`
+          : `Código de ordem "${matchKey}" não encontrado no Proteus`;
+
         await upsertConciliacao({
           faturamentoId,
           pedidoId: pedido.id,
@@ -101,55 +133,55 @@ export async function executarConciliacao(faturamentoId: string): Promise<void> 
           valorProteus: null,
           diferenca: null,
         });
-
         await criarDivergencia({
           faturamentoId,
           tipo: "LINHA_FALTANTE",
-          descricao: `Ordem de pagamento "${codigoOrdem}" não encontrada no Proteus`,
-          detalhe: { codigoOrdem, pedidoId: pedido.id },
+          descricao,
+          detalhe: { matchKey, matchType, pedidoId: pedido.id },
           valorAutorizador: somaPedidos,
         });
-
         continue;
       }
 
       const valorProteus = ordem.valorTotal ? Number(ordem.valorTotal) : 0;
-      const diferenca = Math.abs(somaPedidos - valorProteus);
+      const diferenca    = Math.abs(somaPedidos - valorProteus);
       const divergencias: string[] = [];
 
-      // 4. Check value divergence (tolerance of R$ 0.01)
+      // Valor divergente (tolerance R$ 0,01)
       if (diferenca > 0.01) {
         divergencias.push("VALOR_DIVERGENTE");
         await criarDivergencia({
           faturamentoId,
           tipo: "VALOR_DIVERGENTE",
-          descricao: `Valor Autorizador (${somaPedidos.toFixed(2)}) ≠ Valor Proteus (${valorProteus.toFixed(2)}) para ordem ${codigoOrdem}`,
-          detalhe: { codigoOrdem, pedidoId: pedido.id, ordemId: ordem.id },
+          descricao: `Valor Autorizador (${somaPedidos.toFixed(2)}) ≠ Valor Proteus (${valorProteus.toFixed(2)}) — NF "${pedido.numeroNotaFiscal ?? matchKey}"`,
+          detalhe: { matchKey, matchType, pedidoId: pedido.id, ordemId: ordem.id },
           valorAutorizador: somaPedidos,
           valorProteus,
         });
       }
 
-      // 5. Check NF divergence (after normalization)
-      const nfAutorizador = normalizarTexto(pedido.numeroNotaFiscal ?? "");
-      const nfProteus = normalizarTexto(ordem.numeroNotaFiscal ?? "");
-      if (nfAutorizador && nfProteus && nfAutorizador !== nfProteus) {
-        divergencias.push("NF_ABREVIADA");
-        await criarDivergencia({
-          faturamentoId,
-          tipo: "NF_ABREVIADA",
-          descricao: `NF Autorizador "${pedido.numeroNotaFiscal}" ≠ NF Proteus "${ordem.numeroNotaFiscal}" para ordem ${codigoOrdem}`,
-          detalhe: {
-            codigoOrdem,
-            pedidoId: pedido.id,
-            ordemId: ordem.id,
-            nfAutorizador: pedido.numeroNotaFiscal,
-            nfProteus: ordem.numeroNotaFiscal,
-          },
-        });
+      // NF divergente (só checamos quando o match foi por código, para detectar divergência de NF)
+      if (matchType === "CODIGO") {
+        const nfAut = normalizarTexto(pedido.numeroNotaFiscal ?? "");
+        const nfPro = normalizarTexto(ordem.numeroNotaFiscal ?? "");
+        if (nfAut && nfPro && nfAut !== nfPro) {
+          divergencias.push("NF_ABREVIADA");
+          await criarDivergencia({
+            faturamentoId,
+            tipo: "NF_ABREVIADA",
+            descricao: `NF Autorizador "${pedido.numeroNotaFiscal}" ≠ NF Proteus "${ordem.numeroNotaFiscal}"`,
+            detalhe: {
+              matchKey,
+              pedidoId: pedido.id,
+              ordemId: ordem.id,
+              nfAutorizador: pedido.numeroNotaFiscal,
+              nfProteus: ordem.numeroNotaFiscal,
+            },
+          });
+        }
       }
 
-      // 6. Check CNPJ divergence
+      // CNPJ divergente
       const cnpjAut = normalizarCnpj(pedido.clinica?.cnpj ?? "");
       const cnpjPro = normalizarCnpj(ordem.cnpj ?? "");
       if (cnpjAut && cnpjPro && cnpjAut !== cnpjPro) {
@@ -157,9 +189,9 @@ export async function executarConciliacao(faturamentoId: string): Promise<void> 
         await criarDivergencia({
           faturamentoId,
           tipo: "CNPJ_DIFERENTE",
-          descricao: `CNPJ Autorizador "${cnpjAut}" ≠ CNPJ Proteus "${cnpjPro}" para ordem ${codigoOrdem}`,
+          descricao: `CNPJ Autorizador "${cnpjAut}" ≠ CNPJ Proteus "${cnpjPro}"`,
           detalhe: {
-            codigoOrdem,
+            matchKey,
             pedidoId: pedido.id,
             ordemId: ordem.id,
             cnpjAutorizador: cnpjAut,
@@ -168,13 +200,11 @@ export async function executarConciliacao(faturamentoId: string): Promise<void> 
         });
       }
 
-      const status = divergencias.length > 0 ? "ATENCAO" : "OK";
-
       await upsertConciliacao({
         faturamentoId,
         pedidoId: pedido.id,
         ordemId: ordem.id,
-        status,
+        status: divergencias.length > 0 ? "ATENCAO" : "OK",
         valorAutorizador: somaPedidos,
         valorProteus,
         diferenca,
@@ -184,6 +214,21 @@ export async function executarConciliacao(faturamentoId: string): Promise<void> 
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Normalizes a nota fiscal number for comparison:
+ * lowercases, trims, removes accents and underscores.
+ * Returns null/empty string when the input is blank.
+ */
+function normalizarNF(raw: string | null | undefined): string {
+  if (!raw) return "";
+  const s = String(raw)
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "");
+  return s;
+}
 
 interface ConciliacaoData {
   faturamentoId: string;
@@ -200,19 +245,19 @@ async function upsertConciliacao(data: ConciliacaoData) {
     where: { pedidoId: data.pedidoId },
     create: {
       faturamentoId: data.faturamentoId,
-      pedidoId: data.pedidoId,
-      ordemId: data.ordemId,
-      status: data.status,
+      pedidoId:      data.pedidoId,
+      ordemId:       data.ordemId,
+      status:        data.status,
       valorAutorizador: data.valorAutorizador,
-      valorProteus: data.valorProteus,
-      diferenca: data.diferenca,
+      valorProteus:     data.valorProteus,
+      diferenca:        data.diferenca,
     },
     update: {
-      ordemId: data.ordemId,
-      status: data.status,
+      ordemId:       data.ordemId,
+      status:        data.status,
       valorAutorizador: data.valorAutorizador,
-      valorProteus: data.valorProteus,
-      diferenca: data.diferenca,
+      valorProteus:     data.valorProteus,
+      diferenca:        data.diferenca,
     },
   });
 }
@@ -238,11 +283,11 @@ async function criarDivergencia(data: DivergenciaData) {
   await prisma.divergencia.create({
     data: {
       faturamentoId: data.faturamentoId,
-      tipo: data.tipo,
-      descricao: data.descricao,
-      detalhe: (data.detalhe ?? {}) as Prisma.InputJsonValue,
+      tipo:          data.tipo,
+      descricao:     data.descricao,
+      detalhe:       (data.detalhe ?? {}) as Prisma.InputJsonValue,
       valorAutorizador: data.valorAutorizador ?? null,
-      valorProteus: data.valorProteus ?? null,
+      valorProteus:     data.valorProteus ?? null,
     },
   });
 }
