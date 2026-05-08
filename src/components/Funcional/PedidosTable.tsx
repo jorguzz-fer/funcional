@@ -11,7 +11,7 @@ interface Pedido {
   statusOrdemPagamento: string | null;
   excluido: boolean;
   motivoExclusao: string | null;
-  clinica: { cnpj: string; razaoSocial: string; nomeFantasia: string | null } | null;
+  clinica: { cnpj: string; razaoSocial: string; nomeFantasia: string | null; grandeRede: boolean } | null;
   medicamento: { nome: string } | null;
 }
 
@@ -84,9 +84,19 @@ export default function PedidosTable({ pedidos }: { pedidos: Pedido[] }) {
                 )}
               </td>
               <td className="px-4 py-3">
-                <p className="text-gray-800 dark:text-gray-200 text-xs font-medium leading-snug max-w-[180px] truncate">
-                  {p.clinica?.nomeFantasia ?? p.clinica?.razaoSocial ?? "—"}
-                </p>
+                <div className="flex items-center gap-1.5">
+                  <p className="text-gray-800 dark:text-gray-200 text-xs font-medium leading-snug max-w-[180px] truncate">
+                    {p.clinica?.nomeFantasia ?? p.clinica?.razaoSocial ?? "—"}
+                  </p>
+                  {p.clinica?.grandeRede && (
+                    <span
+                      title="Grande Rede"
+                      className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 whitespace-nowrap"
+                    >
+                      GR
+                    </span>
+                  )}
+                </div>
                 <p className="text-gray-400 text-xs font-mono">
                   {p.clinica?.cnpj ?? "—"}
                 </p>

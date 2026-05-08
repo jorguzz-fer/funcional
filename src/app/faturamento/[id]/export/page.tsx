@@ -30,9 +30,20 @@ export default async function ExportPage({ params }: Props) {
   const fmt = (d: Date) => d.toLocaleDateString("pt-BR");
   const periodo = `${fmt(faturamento.dataInicio)} — ${fmt(faturamento.dataFechamento)}`;
 
-  const divergenciasPendentes = await prisma.divergencia.count({
-    where: { faturamentoId: id, resolvido: false },
-  });
+  const [divergenciasPendentes, totalGrandes, totalConvencionais] = await Promise.all([
+    prisma.divergencia.count({ where: { faturamentoId: id, resolvido: false } }),
+    prisma.pedido.count({
+      where: { faturamentoId: id, excluido: false, clinica: { grandeRede: true } },
+    }),
+    prisma.pedido.count({
+      where: {
+        faturamentoId: id,
+        excluido: false,
+        OR: [{ clinica: { grandeRede: false } }, { clinica: null }],
+      },
+    }),
+  ]);
+  const totalValidos = totalGrandes + totalConvencionais;
 
   return (
     <div className="p-[25px]">
@@ -73,90 +84,89 @@ export default async function ExportPage({ params }: Props) {
         </div>
       )}
 
-      {/* Export Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Planilha Funcional */}
-        <div className="bg-white dark:bg-[#0d1526] rounded-2xl p-6 border border-gray-100 dark:border-[#1e2d47] shadow-sm">
-          <div className="flex items-start gap-4 mb-4">
-            <div className="w-12 h-12 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0">
-              <span className="material-symbols-outlined text-blue-600 dark:text-blue-400 text-xl">table_chart</span>
-            </div>
-            <div>
-              <h2 className="text-base font-semibold text-gray-900 dark:text-white">
-                Planilha Funcional
-              </h2>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-                Formato para envio à J&amp;J — campos BR-A/DSP, sem dados pessoais (LGPD)
-              </p>
-            </div>
+      {/* Resumo por categoria */}
+      <div className="grid grid-cols-3 gap-4 mb-6">
+        <div className="bg-white dark:bg-[#0d1526] rounded-xl p-4 border border-gray-100 dark:border-[#1e2d47]">
+          <p className="text-xs text-gray-500 dark:text-gray-400">Pedidos válidos (todas)</p>
+          <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
+            {totalValidos.toLocaleString("pt-BR")}
+          </p>
+        </div>
+        <div className="bg-white dark:bg-[#0d1526] rounded-xl p-4 border border-gray-100 dark:border-[#1e2d47]">
+          <p className="text-xs text-gray-500 dark:text-gray-400">Grandes Redes</p>
+          <p className="text-2xl font-bold text-blue-600 dark:text-blue-400 mt-1">
+            {totalGrandes.toLocaleString("pt-BR")}
+          </p>
+        </div>
+        <div className="bg-white dark:bg-[#0d1526] rounded-xl p-4 border border-gray-100 dark:border-[#1e2d47]">
+          <p className="text-xs text-gray-500 dark:text-gray-400">Redes Convencionais</p>
+          <p className="text-2xl font-bold text-amber-600 dark:text-amber-400 mt-1">
+            {totalConvencionais.toLocaleString("pt-BR")}
+          </p>
+        </div>
+      </div>
+
+      {/* Planilha Funcional — 3 categorias */}
+      <div className="bg-white dark:bg-[#0d1526] rounded-2xl p-6 border border-gray-100 dark:border-[#1e2d47] shadow-sm mb-6">
+        <div className="flex items-start gap-4 mb-5">
+          <div className="w-12 h-12 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0">
+            <span className="material-symbols-outlined text-blue-600 dark:text-blue-400 text-xl">table_chart</span>
           </div>
-
-          <ul className="space-y-1.5 mb-5 text-sm text-gray-600 dark:text-gray-300">
-            <li className="flex items-center gap-2">
-              <span className="material-symbols-outlined text-green-500 text-base">check</span>
-              Voucher, medicamento, clínica (CNPJ)
-            </li>
-            <li className="flex items-center gap-2">
-              <span className="material-symbols-outlined text-green-500 text-base">check</span>
-              Código paciente (BR-A/DSP) — sem PII
-            </li>
-            <li className="flex items-center gap-2">
-              <span className="material-symbols-outlined text-green-500 text-base">check</span>
-              Data infusão, AGE, valor unitário
-            </li>
-            <li className="flex items-center gap-2">
-              <span className="material-symbols-outlined text-green-500 text-base">check</span>
-              Somente pedidos não excluídos
-            </li>
-          </ul>
-
-          <ExportButtons
-            faturamentoId={id}
-            tipo="funcional"
-            label="Baixar Planilha Funcional (.xlsx)"
-          />
+          <div>
+            <h2 className="text-base font-semibold text-gray-900 dark:text-white">
+              Planilha Funcional
+            </h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+              Formato para envio à J&amp;J — escolha a categoria de clínicas a exportar
+            </p>
+          </div>
         </div>
 
-        {/* Planilha Proteus */}
-        <div className="bg-white dark:bg-[#0d1526] rounded-2xl p-6 border border-gray-100 dark:border-[#1e2d47] shadow-sm">
-          <div className="flex items-start gap-4 mb-4">
-            <div className="w-12 h-12 rounded-xl bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center flex-shrink-0">
-              <span className="material-symbols-outlined text-purple-600 dark:text-purple-400 text-xl">description</span>
-            </div>
-            <div>
-              <h2 className="text-base font-semibold text-gray-900 dark:text-white">
-                Planilha Proteus
-              </h2>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-                Formato compatível com o sistema Proteus / Talita
-              </p>
-            </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="border border-gray-200 dark:border-[#1e2d47] rounded-xl p-4">
+            <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Todas</p>
+            <p className="text-xs text-gray-400 mb-3">Bate financeiro completo (10º dia útil)</p>
+            <ExportButtons faturamentoId={id} tipo="funcional" categoria="todas"
+              label={`Todas (${totalValidos})`} />
           </div>
+          <div className="border border-blue-200 dark:border-blue-900/50 rounded-xl p-4 bg-blue-50/40 dark:bg-blue-900/5">
+            <p className="text-xs font-medium text-blue-700 dark:text-blue-400 mb-1">Grandes Redes</p>
+            <p className="text-xs text-gray-400 mb-3">Envio para revisão (1º dia útil)</p>
+            <ExportButtons faturamentoId={id} tipo="funcional" categoria="grandes"
+              label={`Grandes (${totalGrandes})`} />
+          </div>
+          <div className="border border-amber-200 dark:border-amber-900/50 rounded-xl p-4 bg-amber-50/40 dark:bg-amber-900/5">
+            <p className="text-xs font-medium text-amber-700 dark:text-amber-400 mb-1">Convencionais</p>
+            <p className="text-xs text-gray-400 mb-3">Geração das ordens (1º dia útil)</p>
+            <ExportButtons faturamentoId={id} tipo="funcional" categoria="convencionais"
+              label={`Convencionais (${totalConvencionais})`} />
+          </div>
+        </div>
+      </div>
 
-          <ul className="space-y-1.5 mb-5 text-sm text-gray-600 dark:text-gray-300">
-            <li className="flex items-center gap-2">
-              <span className="material-symbols-outlined text-green-500 text-base">check</span>
-              Código de ordem de pagamento
-            </li>
-            <li className="flex items-center gap-2">
-              <span className="material-symbols-outlined text-green-500 text-base">check</span>
-              Número de nota fiscal e datas
-            </li>
-            <li className="flex items-center gap-2">
-              <span className="material-symbols-outlined text-green-500 text-base">check</span>
-              Status da ordem de pagamento
-            </li>
-            <li className="flex items-center gap-2">
-              <span className="material-symbols-outlined text-green-500 text-base">check</span>
-              Valores totais por ordem
-            </li>
-          </ul>
+      {/* Planilha Proteus */}
+      <div className="bg-white dark:bg-[#0d1526] rounded-2xl p-6 border border-gray-100 dark:border-[#1e2d47] shadow-sm">
+        <div className="flex items-start gap-4 mb-5">
+          <div className="w-12 h-12 rounded-xl bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center flex-shrink-0">
+            <span className="material-symbols-outlined text-purple-600 dark:text-purple-400 text-xl">description</span>
+          </div>
+          <div>
+            <h2 className="text-base font-semibold text-gray-900 dark:text-white">
+              Planilha Proteus
+            </h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+              Formato compatível com o sistema Proteus / Talita
+            </p>
+          </div>
+        </div>
 
-          <ExportButtons
-            faturamentoId={id}
-            tipo="proteus"
-            label="Baixar Planilha Proteus (.xlsx)"
-          />
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <ExportButtons faturamentoId={id} tipo="proteus" categoria="todas"
+            label="Proteus — Todas" />
+          <ExportButtons faturamentoId={id} tipo="proteus" categoria="grandes"
+            label="Proteus — Grandes Redes" />
+          <ExportButtons faturamentoId={id} tipo="proteus" categoria="convencionais"
+            label="Proteus — Convencionais" />
         </div>
       </div>
 

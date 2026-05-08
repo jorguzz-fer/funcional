@@ -25,7 +25,7 @@ const STATUS_BADGE: Record<string, string> = {
 
 interface Props {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ tab?: string; page?: string; statusVoucher?: string; excluidos?: string; busca?: string }>;
+  searchParams: Promise<{ tab?: string; page?: string; statusVoucher?: string; excluidos?: string; busca?: string; categoria?: string }>;
 }
 
 export default async function FaturamentoDetailPage({ params, searchParams }: Props) {
@@ -86,12 +86,17 @@ export default async function FaturamentoDetailPage({ params, searchParams }: Pr
   if (sp.busca) {
     where.voucher = { contains: sp.busca, mode: "insensitive" };
   }
+  if (sp.categoria === "grandes") {
+    where.clinica = { grandeRede: true };
+  } else if (sp.categoria === "convencionais") {
+    where.OR = [{ clinica: { grandeRede: false } }, { clinica: null }];
+  }
 
   const [pedidos, totalRows] = await Promise.all([
     prisma.pedido.findMany({
       where,
       include: {
-        clinica: { select: { cnpj: true, razaoSocial: true, nomeFantasia: true } },
+        clinica: { select: { cnpj: true, razaoSocial: true, nomeFantasia: true, grandeRede: true } },
         medicamento: { select: { nome: true } },
       },
       orderBy: { createdAt: "desc" },
@@ -110,6 +115,7 @@ export default async function FaturamentoDetailPage({ params, searchParams }: Pr
       ...(sp.statusVoucher ? { statusVoucher: sp.statusVoucher } : {}),
       ...(sp.excluidos ? { excluidos: sp.excluidos } : {}),
       ...(sp.busca ? { busca: sp.busca } : {}),
+      ...(sp.categoria ? { categoria: sp.categoria } : {}),
       ...overrides,
     });
     return `/faturamento/${id}?${p.toString()}`;
@@ -253,6 +259,15 @@ export default async function FaturamentoDetailPage({ params, searchParams }: Pr
               <option value="todos">Todos</option>
               <option value="nao">Não excluídos</option>
               <option value="sim">Excluídos</option>
+            </select>
+            <select
+              name="categoria"
+              defaultValue={sp.categoria ?? "todas"}
+              className="text-sm px-3 py-2 rounded-lg border border-gray-200 dark:border-[#2a3a5c] bg-white dark:bg-[#0a1220] text-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-400"
+            >
+              <option value="todas">Todas as redes</option>
+              <option value="grandes">Grandes redes</option>
+              <option value="convencionais">Redes convencionais</option>
             </select>
             <button
               type="submit"

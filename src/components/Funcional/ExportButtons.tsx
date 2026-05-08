@@ -2,13 +2,16 @@
 
 import { useState } from "react";
 
+type Categoria = "todas" | "grandes" | "convencionais";
+
 interface Props {
   faturamentoId: string;
   tipo: "funcional" | "proteus";
   label: string;
+  categoria?: Categoria;
 }
 
-export default function ExportButtons({ faturamentoId, tipo, label }: Props) {
+export default function ExportButtons({ faturamentoId, tipo, label, categoria = "todas" }: Props) {
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
@@ -16,8 +19,11 @@ export default function ExportButtons({ faturamentoId, tipo, label }: Props) {
     setLoading(true);
     setErro(null);
     try {
+      const params = new URLSearchParams({ tipo });
+      if (categoria !== "todas") params.set("categoria", categoria);
+
       const res = await fetch(
-        `/api/faturamento/${faturamentoId}/export?tipo=${tipo}`,
+        `/api/faturamento/${faturamentoId}/export?${params.toString()}`,
       );
 
       if (!res.ok) {
@@ -26,11 +32,16 @@ export default function ExportButtons({ faturamentoId, tipo, label }: Props) {
         return;
       }
 
+      // Pega o nome do arquivo do Content-Disposition (servidor já manda formatado)
+      const cd = res.headers.get("Content-Disposition") ?? "";
+      const match = cd.match(/filename="?([^";]+)"?/i);
+      const filename = match?.[1] ?? `faturamento_${tipo}_${categoria}_${faturamentoId}.xlsx`;
+
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `faturamento_${tipo}_${faturamentoId}.xlsx`;
+      a.download = filename;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);

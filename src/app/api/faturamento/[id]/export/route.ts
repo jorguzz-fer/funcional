@@ -8,6 +8,8 @@ interface Params {
   params: Promise<{ id: string }>;
 }
 
+type Categoria = "todas" | "grandes" | "convencionais";
+
 export async function GET(req: Request, { params }: Params) {
   const auth = await requireRole(ROLES_READ);
   if (auth.error) return auth.error;
@@ -15,6 +17,9 @@ export async function GET(req: Request, { params }: Params) {
   const { id: faturamentoId } = await params;
   const { searchParams } = new URL(req.url);
   const tipo = searchParams.get("tipo"); // "funcional" | "proteus"
+  const categoriaRaw = searchParams.get("categoria") ?? "todas";
+  const categoria: Categoria =
+    categoriaRaw === "grandes" || categoriaRaw === "convencionais" ? categoriaRaw : "todas";
 
   if (tipo !== "funcional" && tipo !== "proteus") {
     return NextResponse.json({ error: 'Parâmetro "tipo" inválido. Use "funcional" ou "proteus".' }, { status: 400 });
@@ -32,27 +37,52 @@ export async function GET(req: Request, { params }: Params) {
   const fmtFile = (d: Date) =>
     `${String(d.getDate()).padStart(2, "0")}${String(d.getMonth() + 1).padStart(2, "0")}${d.getFullYear()}`;
   const periodo = `${fmtFile(faturamento.dataInicio)}_${fmtFile(faturamento.dataFechamento)}`;
+  const sufixoCat =
+    categoria === "grandes" ? "_GrandesRedes" : categoria === "convencionais" ? "_Convencionais" : "";
 
   await logAudit({
     userId: auth.session.user.id,
     action: "faturamento.export",
     entity: "Faturamento",
     entityId: faturamentoId,
-    meta: { tipo, periodo },
+    meta: { tipo, periodo, categoria },
     ip: getClientIp(req),
   });
 
   if (tipo === "funcional") {
-    return gerarExportFuncional(faturamentoId, periodo);
+    return gerarExportFuncional(faturamentoId, periodo + sufixoCat, categoria);
   }
-  return gerarExportProteus(faturamentoId, periodo);
+  return gerarExportProteus(faturamentoId, periodo + sufixoCat, categoria);
+}
+
+/**
+ * Builds the Prisma `where` clause for filtering by clinic category.
+ * grandes        → only pedidos from clinicas marked as grandeRede
+ * convencionais  → only pedidos from clinicas NOT marked as grandeRede (and unmatched)
+ * todas          → no extra filter
+ */
+function buildCategoriaFilter(categoria: Categoria) {
+  if (categoria === "grandes") return { clinica: { grandeRede: true } };
+  if (categoria === "convencionais") {
+    return {
+      OR: [
+        { clinica: { grandeRede: false } },
+        { clinica: null },
+      ],
+    };
+  }
+  return {};
 }
 
 // ─── Planilha Funcional (vai para J&J com BR-A/DSP, sem PII) ─────────────────
 
-async function gerarExportFuncional(faturamentoId: string, periodo: string) {
+async function gerarExportFuncional(faturamentoId: string, periodo: string, categoria: Categoria) {
   const pedidos = await prisma.pedido.findMany({
-    where: { faturamentoId, excluido: false },
+    where: {
+      faturamentoId,
+      excluido: false,
+      ...buildCategoriaFilter(categoria),
+    },
     orderBy: [{ clinicaId: "asc" }, { dataInfusao: "asc" }],
     include: { clinica: true, medicamento: true },
   });
@@ -80,6 +110,7 @@ async function gerarExportFuncional(faturamentoId: string, periodo: string) {
     "Status Ordem":               p.statusOrdemPagamento ?? "",
     "CNPJ Clínica (Faturamento)": p.clinica?.cnpj ?? "",
     "Nome Clínica":               p.clinica?.nomeFantasia ?? p.clinica?.razaoSocial ?? "",
+    "Categoria":                  p.clinica?.grandeRede ? "Grande Rede" : "Convencional",
     "Cidade":                     p.clinica?.cidade ?? "",
     "Estado":                     p.clinica?.estado ?? "",
     "Prazo Pagamento":            p.clinica?.prazoFaturamento ?? "",
@@ -90,9 +121,12 @@ async function gerarExportFuncional(faturamentoId: string, periodo: string) {
 
 // ─── Planilha Proteus (formato da Talita / financeiro) ────────────────────────
 
-async function gerarExportProteus(faturamentoId: string, periodo: string) {
+async function gerarExportProteus(faturamentoId: string, periodo: string, categoria: Categoria) {
   const ordens = await prisma.ordemPagamento.findMany({
-    where: { faturamentoId },
+    where: {
+      faturamentoId,
+      ...buildCategoriaFilter(categoria),
+    },
     orderBy: [{ cnpj: "asc" }, { codigoOrdem: "asc" }],
     include: { clinica: true },
   });
@@ -104,6 +138,7 @@ async function gerarExportProteus(faturamentoId: string, periodo: string) {
     "CNPJ":                    o.cnpj ?? "",
     "Razão Social":            o.razaoSocial ?? "",
     "Nome Fantasia":           o.clinica?.nomeFantasia ?? "",
+    "Categoria":               o.clinica?.grandeRede ? "Grande Rede" : "Convencional",
     "Cidade":                  o.clinica?.cidade ?? "",
     "Estado":                  o.clinica?.estado ?? "",
     "Status":                  o.status ?? "",
