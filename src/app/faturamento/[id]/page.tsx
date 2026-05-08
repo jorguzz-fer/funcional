@@ -5,6 +5,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import PedidosTable from "@/components/Funcional/PedidosTable";
 import ProcessingBanner from "@/components/Funcional/ProcessingBanner";
+import LimparReprocessarButton from "@/components/Funcional/LimparReprocessarButton";
 
 const STATUS_LABEL: Record<string, string> = {
   RASCUNHO:   "Rascunho",
@@ -30,6 +31,8 @@ interface Props {
 export default async function FaturamentoDetailPage({ params, searchParams }: Props) {
   const session = await auth();
   if (!session) redirect("/login");
+
+  const isAdmin = (session.user as { role?: string }).role === "ADMIN";
 
   const { id } = await params;
   const sp = await searchParams;
@@ -140,13 +143,18 @@ export default async function FaturamentoDetailPage({ params, searchParams }: Pr
             Fechamento em {faturamento.dataFechamento.toLocaleDateString("pt-BR")}
           </p>
         </div>
-        <Link
-          href={`/faturamento/${id}/export`}
-          className="flex items-center gap-2 px-4 py-2.5 bg-primary-500 hover:bg-primary-600 text-white text-sm font-medium rounded-lg transition"
-        >
-          <span className="material-symbols-outlined text-lg">download</span>
-          Exportar
-        </Link>
+        <div className="flex items-center gap-3">
+          {isAdmin && (
+            <LimparReprocessarButton id={id} periodo={periodo} />
+          )}
+          <Link
+            href={`/faturamento/${id}/export`}
+            className="flex items-center gap-2 px-4 py-2.5 bg-primary-500 hover:bg-primary-600 text-white text-sm font-medium rounded-lg transition"
+          >
+            <span className="material-symbols-outlined text-lg">download</span>
+            Exportar
+          </Link>
+        </div>
       </div>
 
       {/* Summary Cards */}
