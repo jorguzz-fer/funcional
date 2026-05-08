@@ -10,6 +10,12 @@ import {
 interface FaturamentoRef {
   dataInicio: Date;
   dataFechamento: Date;
+  /**
+   * Maximum age (in days) between dataInfusao and dataFechamento.
+   * Pedidos older than this limit are excluded from the billing.
+   * Default 90 days, conforme regra de negócio J&J.
+   */
+  prazoFaturamentoDias?: number;
 }
 
 /**
@@ -96,6 +102,8 @@ export function limparAutorizador(
 ): PedidoInput[] {
   if (rows.length === 0) return [];
 
+  const PRAZO_DIAS = faturamento.prazoFaturamentoDias ?? 90;
+
   // Resolve headers once, using the first row's keys as column names
   const headers = Object.keys(rows[0]);
   const col = resolveHeaders(headers);
@@ -163,12 +171,23 @@ export function limparAutorizador(
       return { ...baseFields, excluido: true, motivoExclusao: "Fora do período de faturamento" };
     }
 
-    if (statusVoucher === "CONSULTADO") {
-      return { ...baseFields, excluido: true, motivoExclusao: "Voucher consultado" };
+    // Aging > prazo de faturamento (regra J&J: 90 dias entre infusão e fechamento)
+    if (ageDias !== null && ageDias > PRAZO_DIAS) {
+      return {
+        ...baseFields,
+        excluido: true,
+        motivoExclusao: `Aging excedido: ${ageDias} dias (limite ${PRAZO_DIAS})`,
+      };
     }
 
     if (statusVoucher === "GLOSADO") {
       return { ...baseFields, excluido: true, motivoExclusao: "Voucher glosado" };
+    }
+
+    // CONSULTADO sem ordem de pagamento → não foi enviado para faturamento
+    // (CONSULTADO com ordem é mantido — vai para conciliação)
+    if (statusVoucher === "CONSULTADO" && !codigoOrdemPagamento) {
+      return { ...baseFields, excluido: true, motivoExclusao: "Voucher consultado sem ordem" };
     }
 
     // No ordem de pagamento AND no data de finalizacao

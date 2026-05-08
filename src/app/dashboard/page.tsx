@@ -54,11 +54,21 @@ export default async function DashboardPage({ searchParams }: Props) {
   const ids = faturamentos.map((f) => f.id);
   const whereIds = ids.length > 0 ? { faturamentoId: { in: ids } } : { id: "never" as string };
 
-  const [totalPedidos, pedidosValidos, valorAggreg, divergenciasPendentes] = await Promise.all([
+  const [totalPedidos, pedidosValidos, valorAggreg, divergenciasPendentes, agingOk, agingAtencao, agingUrgente] = await Promise.all([
     prisma.pedido.count({ where: whereIds }),
     prisma.pedido.count({ where: { ...whereIds, excluido: false } }),
     prisma.ordemPagamento.aggregate({ where: whereIds, _sum: { valorTotal: true } }),
     prisma.divergencia.count({ where: { ...whereIds, resolvido: false } }),
+    // Aging buckets — apenas pedidos válidos (não excluídos)
+    prisma.pedido.count({
+      where: { ...whereIds, excluido: false, ageDias: { lte: 30 } },
+    }),
+    prisma.pedido.count({
+      where: { ...whereIds, excluido: false, ageDias: { gt: 30, lte: 60 } },
+    }),
+    prisma.pedido.count({
+      where: { ...whereIds, excluido: false, ageDias: { gt: 60, lte: 90 } },
+    }),
   ]);
 
   const valorTotal = valorAggreg._sum.valorTotal?.toNumber() ?? 0;
@@ -186,6 +196,39 @@ export default async function DashboardPage({ searchParams }: Props) {
           </table>
         </div>
       )}
+
+      {/* Aging de Pedidos — Prazo de Faturamento */}
+      <div className="bg-white dark:bg-[#0d1526] rounded-2xl p-6 border border-gray-100 dark:border-[#1e2d47] shadow-sm mb-[25px]">
+        <h2 className="text-base font-semibold text-gray-900 dark:text-white mb-1">
+          Aging de Pedidos — Prazo de Faturamento (90 dias)
+        </h2>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+          Distribuição dos pedidos válidos por faixa de dias entre infusão e fechamento. Pedidos com mais de 90 dias são automaticamente excluídos do faturamento.
+        </p>
+        <div className="grid grid-cols-3 gap-4">
+          <div className="text-center p-4 rounded-xl bg-green-50 dark:bg-green-900/10 border border-green-200 dark:border-green-900/40">
+            <p className="text-2xl font-bold text-green-600 dark:text-green-400">
+              {agingOk.toLocaleString("pt-BR")}
+            </p>
+            <p className="text-xs text-gray-500 mt-1">até 30 dias</p>
+            <p className="text-xs font-medium text-green-600 dark:text-green-400">OK</p>
+          </div>
+          <div className="text-center p-4 rounded-xl bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-900/40">
+            <p className="text-2xl font-bold text-amber-600 dark:text-amber-400">
+              {agingAtencao.toLocaleString("pt-BR")}
+            </p>
+            <p className="text-xs text-gray-500 mt-1">31–60 dias</p>
+            <p className="text-xs font-medium text-amber-600 dark:text-amber-400">Atenção</p>
+          </div>
+          <div className="text-center p-4 rounded-xl bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-900/40">
+            <p className="text-2xl font-bold text-red-600 dark:text-red-400">
+              {agingUrgente.toLocaleString("pt-BR")}
+            </p>
+            <p className="text-xs text-gray-500 mt-1">61–90 dias</p>
+            <p className="text-xs font-medium text-red-600 dark:text-red-400">Urgente</p>
+          </div>
+        </div>
+      </div>
 
       {/* Ações rápidas */}
       <div className="bg-white dark:bg-[#0d1526] rounded-2xl p-6 border border-gray-100 dark:border-[#1e2d47] shadow-sm">

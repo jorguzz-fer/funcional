@@ -74,9 +74,32 @@ export async function processarFaturamento(
     const pedidosInput = limparAutorizador(rowsAut, {
       dataInicio: faturamento.dataInicio,
       dataFechamento: faturamento.dataFechamento,
+      prazoFaturamentoDias: 90,
     });
 
     const ordensInput = limparProteus(rowsPro);
+
+    // 5b. Deduplicação histórica — voucher já faturado em outro período?
+    // Conforme PPT slide 4: "PROCV com base consolidada de atendimentos faturados,
+    // para retirada de procedimentos já enviados para pagamento".
+    const vouchersAtivos = pedidosInput.filter((p) => !p.excluido).map((p) => p.voucher);
+    const jaFaturados = await prisma.pedido.findMany({
+      where: {
+        voucher: { in: vouchersAtivos },
+        excluido: false,
+        faturamentoId: { not: faturamentoId },
+        faturamento: { status: { in: ["EXPORTADO", "CONCLUIDO"] } },
+      },
+      select: { voucher: true, faturamentoId: true },
+    });
+    const vouchersJaFaturados = new Map(jaFaturados.map((p) => [p.voucher, p.faturamentoId]));
+
+    for (const p of pedidosInput) {
+      if (!p.excluido && vouchersJaFaturados.has(p.voucher)) {
+        p.excluido = true;
+        p.motivoExclusao = `Já faturado em período anterior (faturamento ${vouchersJaFaturados.get(p.voucher)?.slice(0, 8)}…)`;
+      }
+    }
 
     // 6 & 7. Persist Pedidos (upsert por voucher + articulacaoId)
     for (const p of pedidosInput) {
