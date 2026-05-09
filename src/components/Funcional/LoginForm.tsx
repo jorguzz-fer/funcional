@@ -4,6 +4,10 @@ import React, { useState, FormEvent } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 
+const MONO_LABEL: React.CSSProperties = {
+  fontFamily: "var(--font-mono), ui-monospace, monospace",
+};
+
 export default function LoginForm() {
   const router = useRouter();
   const [email, setEmail]       = useState("");
@@ -34,10 +38,16 @@ export default function LoginForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} noValidate className="space-y-5">
+    <form onSubmit={handleSubmit} noValidate className="space-y-6">
       {error && (
-        <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
-          {error}
+        <div
+          role="alert"
+          className="flex items-start gap-3 p-3.5 rounded-md border border-[#5a1f1f] bg-[#1a0d0d] text-[13px] text-[#ffb3b3]"
+        >
+          <span className="material-symbols-outlined text-[18px] flex-shrink-0 mt-px">
+            error
+          </span>
+          <span>{error}</span>
         </div>
       )}
 
@@ -45,9 +55,10 @@ export default function LoginForm() {
       <div>
         <label
           htmlFor="email"
-          className="block text-sm font-medium text-gray-300 mb-2"
+          className="block text-[10px] tracking-[0.18em] uppercase text-[#a8a8b3] mb-2.5"
+          style={MONO_LABEL}
         >
-          E-mail
+          E-mail corporativo
         </label>
         <input
           id="email"
@@ -56,21 +67,27 @@ export default function LoginForm() {
           required
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          placeholder="seu@funcional.com.br"
-          className="w-full px-4 py-3 rounded-lg border border-[#1e2d47] bg-[#0a1220] text-white text-sm placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-primary-500/40 focus:border-primary-500/40 transition"
+          placeholder="seu.nome@funcionalfarma.com.br"
+          className="w-full px-4 py-3.5 rounded-md border border-[#26262d] bg-[#0a0a10] text-[15px] text-[#f4f4f0] placeholder-[#4a4a52] focus:outline-none focus:border-[#ff7a2e] focus:ring-2 focus:ring-[#ff7a2e]/20 transition"
         />
       </div>
 
       {/* Senha */}
       <div>
-        <div className="flex items-center justify-between mb-2">
+        <div className="flex items-baseline justify-between mb-2.5">
           <label
             htmlFor="password"
-            className="block text-sm font-medium text-gray-300"
+            className="text-[10px] tracking-[0.18em] uppercase text-[#a8a8b3]"
+            style={MONO_LABEL}
           >
             Senha
           </label>
-          <span className="text-xs text-gray-500">Min. 8 caracteres</span>
+          <span
+            className="text-[10px] tracking-[0.12em] uppercase text-[#5a5a63]"
+            style={MONO_LABEL}
+          >
+            Mín. 8 caracteres
+          </span>
         </div>
         <div className="relative">
           <input
@@ -81,16 +98,16 @@ export default function LoginForm() {
             minLength={8}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder="••••••••••"
-            className="w-full px-4 py-3 pr-11 rounded-lg border border-[#1e2d47] bg-[#0a1220] text-white text-sm placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-primary-500/40 focus:border-primary-500/40 transition"
+            placeholder="••••••••••••"
+            className="w-full px-4 py-3.5 pr-12 rounded-md border border-[#26262d] bg-[#0a0a10] text-[15px] text-[#f4f4f0] placeholder-[#4a4a52] focus:outline-none focus:border-[#ff7a2e] focus:ring-2 focus:ring-[#ff7a2e]/20 transition tracking-widest"
           />
           <button
             type="button"
             onClick={() => setShowPass(!showPass)}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 transition"
+            className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center rounded text-[#7a7a83] hover:text-[#f4f4f0] hover:bg-[#1f1f26] transition"
             aria-label={showPass ? "Ocultar senha" : "Mostrar senha"}
           >
-            <span className="material-symbols-outlined text-xl">
+            <span className="material-symbols-outlined text-[20px]">
               {showPass ? "visibility_off" : "visibility"}
             </span>
           </button>
@@ -100,22 +117,26 @@ export default function LoginForm() {
       {/* Submit */}
       <button
         type="submit"
-        disabled={loading}
-        className="w-full py-3 px-4 rounded-lg bg-primary-500 hover:bg-primary-600 text-white font-semibold text-sm transition disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg shadow-primary-500/20"
+        disabled={loading || !email || !password}
+        className="group relative w-full overflow-hidden rounded-md bg-[#ff7a2e] hover:bg-[#ff8c4a] active:bg-[#e56516] disabled:bg-[#3a2418] disabled:cursor-not-allowed transition-all py-4 mt-2 shadow-[0_8px_24px_-8px_rgba(255,122,46,0.4)] hover:shadow-[0_12px_32px_-8px_rgba(255,122,46,0.5)] disabled:shadow-none"
       >
-        {loading ? (
-          <>
-            <span className="material-symbols-outlined animate-spin text-base">
-              progress_activity
-            </span>
-            Entrando…
-          </>
-        ) : (
-          <>
-            Entrar
-            <span className="material-symbols-outlined text-base">arrow_forward</span>
-          </>
-        )}
+        <span className="relative flex items-center justify-center gap-2.5 text-[14px] font-semibold text-[#0a0a0b] tracking-tight">
+          {loading ? (
+            <>
+              <span className="material-symbols-outlined animate-spin text-[18px]">
+                progress_activity
+              </span>
+              Autenticando…
+            </>
+          ) : (
+            <>
+              Entrar na plataforma
+              <span className="material-symbols-outlined text-[18px] transition-transform group-hover:translate-x-1">
+                arrow_forward
+              </span>
+            </>
+          )}
+        </span>
       </button>
     </form>
   );

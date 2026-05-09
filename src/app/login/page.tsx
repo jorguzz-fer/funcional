@@ -2,132 +2,297 @@ import LoginForm from "@/components/Funcional/LoginForm";
 import Logo from "@/components/Funcional/Logo";
 import Link from "next/link";
 import type { Metadata } from "next";
+import { Fraunces, JetBrains_Mono, Inter_Tight } from "next/font/google";
+
+const fraunces = Fraunces({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700", "800", "900"],
+  style: ["normal", "italic"],
+  variable: "--font-display",
+});
+
+const interTight = Inter_Tight({
+  subsets: ["latin"],
+  weight: ["300", "400", "500", "600", "700"],
+  variable: "--font-body",
+});
+
+const jetbrains = JetBrains_Mono({
+  subsets: ["latin"],
+  weight: ["400", "500", "700"],
+  variable: "--font-mono",
+});
 
 export const metadata: Metadata = {
   title: "Login — Funcional Farma",
+  description: "Acesso à plataforma de conciliação Autorizador × Proteus",
 };
 
 const FEATURES = [
   {
-    icon: "auto_awesome",
-    title: "Conciliação automática",
-    desc: "Match por NF entre Autorizador e Proteus, sem PROCV manual.",
+    num: "01",
+    title: "Conciliação por NF",
+    desc: "Match Autorizador × Proteus em segundos. Adeus PROCV.",
   },
   {
-    icon: "shield_lock",
+    num: "02",
     title: "Conforme LGPD",
-    desc: "Audit log completo e dados de paciente nunca trafegam.",
+    desc: "Audit log completo. Dados de paciente nunca trafegam.",
   },
   {
-    icon: "rocket_launch",
-    title: "Export pronto para J&J",
-    desc: "Planilhas formatadas — grandes redes e convencionais separadas.",
+    num: "03",
+    title: "Export J&J",
+    desc: "Planilhas separadas — grandes redes e convencionais.",
   },
 ];
 
 export default function LoginPage() {
+  const year = new Date().getFullYear();
+
   return (
-    <div className="min-h-screen flex flex-col lg:flex-row bg-[#070b16]">
-      {/* ─── LEFT: brand panel ────────────────────────────────────────── */}
-      <div className="relative lg:w-1/2 flex flex-col justify-between overflow-hidden p-8 lg:p-12 bg-gradient-to-br from-[#0a1530] via-[#0e1d3f] to-[#070b16]">
-        {/* Glow */}
-        <div
-          aria-hidden
-          className="absolute inset-0 pointer-events-none"
+    // .auth-main-content ativa o reset de padding no LayoutProvider → full-width
+    <div
+      className={`auth-main-content ${fraunces.variable} ${interTight.variable} ${jetbrains.variable}`}
+    >
+      <div
+        className="min-h-screen w-full grid lg:grid-cols-[1.15fr_0.85fr]"
+        style={{
+          background: "#0a0a0b",
+          fontFamily: "var(--font-body), system-ui, sans-serif",
+          color: "#f4f4f0",
+        }}
+      >
+        {/* ════════════════════ LEFT · BRAND PANEL ════════════════════ */}
+        <aside
+          className="relative flex flex-col overflow-hidden border-b lg:border-b-0 lg:border-r border-[#1f1f26]"
           style={{
             background:
-              "radial-gradient(ellipse 60% 50% at 50% 45%, rgba(96,93,255,0.18) 0%, transparent 70%)",
+              "linear-gradient(135deg, #0a0a0b 0%, #131318 50%, #0d0d12 100%)",
           }}
-        />
+        >
+          {/* Grain texture overlay */}
+          <div
+            aria-hidden
+            className="absolute inset-0 pointer-events-none"
+            style={{
+              opacity: 0.04,
+              backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")`,
+            }}
+          />
 
-        {/* Top bar */}
-        <div className="relative z-10 flex justify-between items-center">
-          <span className="text-xs text-gray-500 tracking-wider uppercase">
-            Funcional Farma
-          </span>
-          <span className="text-xs text-gray-500">v1.0</span>
-        </div>
+          {/* Warm accent glow */}
+          <div
+            aria-hidden
+            className="absolute pointer-events-none -top-1/4 -left-1/4 w-[80%] h-[80%]"
+            style={{
+              background:
+                "radial-gradient(ellipse, rgba(255,107,26,0.10) 0%, transparent 65%)",
+            }}
+          />
+          <div
+            aria-hidden
+            className="absolute pointer-events-none -bottom-1/4 -right-1/4 w-[60%] h-[60%]"
+            style={{
+              background:
+                "radial-gradient(ellipse, rgba(96,93,255,0.06) 0%, transparent 65%)",
+            }}
+          />
 
-        {/* Center content */}
-        <div className="relative z-10 flex flex-col items-center text-center max-w-lg mx-auto py-12">
-          {/* Logo (sempre branca aqui — fundo escuro fixo) */}
-          <div className="mb-6">
-            <Logo width={220} height={56} priority />
-          </div>
+          {/* Header */}
+          <header className="relative z-10 flex items-start justify-between px-8 lg:px-14 pt-10 lg:pt-12">
+            <Logo variant="white" width={170} height={42} priority />
+            <div
+              className="flex items-center gap-2 mt-2"
+              style={{ fontFamily: "var(--font-mono), ui-monospace, monospace" }}
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-[#6ee7a7] animate-pulse" />
+              <span className="text-[10px] tracking-[0.18em] text-[#6ee7a7] uppercase">
+                Em produção
+              </span>
+            </div>
+          </header>
 
-          {/* Status pill */}
-          <span className="inline-flex items-center gap-2 px-3 py-1 mb-8 rounded-full border border-[#1e2d47] bg-[#0a1220]/60 text-xs text-gray-300">
-            <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-            Sistema em produção
-          </span>
+          {/* Hero */}
+          <div className="relative z-10 flex-1 flex flex-col justify-center px-8 lg:px-14 py-14 lg:py-16">
+            <p
+              className="text-[10px] tracking-[0.22em] text-[#ff9558] uppercase mb-7"
+              style={{ fontFamily: "var(--font-mono), ui-monospace, monospace" }}
+            >
+              <span className="inline-block w-6 h-px bg-[#ff9558] mr-3 align-middle" />
+              Acesso privado · v1.0
+            </p>
 
-          {/* Headline */}
-          <h1 className="text-3xl lg:text-4xl font-bold text-white leading-tight mb-4">
-            Pedidos, conciliação<br />
-            e faturamento{" "}
-            <span className="text-primary-400">em uma tela só.</span>
-          </h1>
-
-          <p className="text-sm text-gray-400 leading-relaxed max-w-md">
-            Importação automática do Autorizador e Proteus,
-            conciliação por NF, gestão de divergências e exportação
-            pronta para a J&amp;J — sem PROCV e sem madrugada.
-          </p>
-
-          {/* Feature cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-10 w-full max-w-md">
-            {FEATURES.map((f) => (
-              <div
-                key={f.title}
-                className="bg-[#0a1220]/80 border border-[#1e2d47] rounded-xl p-4 backdrop-blur-sm text-left hover:border-primary-500/40 transition"
+            <h1
+              className="text-[2.5rem] sm:text-[3rem] lg:text-[3.75rem] leading-[1.02] tracking-[-0.025em] font-bold text-[#f4f4f0] max-w-2xl"
+              style={{ fontFamily: "var(--font-display), Georgia, serif" }}
+            >
+              Conciliação{" "}
+              <em
+                className="font-medium"
+                style={{
+                  fontStyle: "italic",
+                  background:
+                    "linear-gradient(120deg, #ff7a2e 0%, #ffa15c 100%)",
+                  WebkitBackgroundClip: "text",
+                  WebkitTextFillColor: "transparent",
+                  backgroundClip: "text",
+                }}
               >
-                <div className="w-8 h-8 rounded-lg bg-primary-500/15 flex items-center justify-center mb-3">
-                  <span className="material-symbols-outlined text-primary-400 text-base">
-                    {f.icon}
-                  </span>
-                </div>
-                <div className="text-xs font-semibold text-white mb-1">
-                  {f.title}
-                </div>
-                <div className="text-[11px] text-gray-400 leading-snug">
-                  {f.desc}
-                </div>
+                que não exige
+                <br />
+                madrugada.
+              </em>
+            </h1>
+
+            <p className="text-[15px] lg:text-[16px] text-[#c4c4cc] leading-relaxed mt-7 max-w-xl">
+              Importação automática do Autorizador e Proteus, conciliação por NF,
+              gestão de divergências e exportação pronta para a J&amp;J — em um
+              único ambiente, com audit log e conformidade LGPD.
+            </p>
+
+            {/* Feature cards */}
+            <div className="mt-12">
+              <div
+                className="text-[10px] tracking-[0.18em] uppercase text-[#7a7a83] mb-4 flex items-center gap-3"
+                style={{ fontFamily: "var(--font-mono), ui-monospace, monospace" }}
+              >
+                <span className="h-px w-6 bg-[#3a3a40]" />
+                O que está dentro
               </div>
-            ))}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {FEATURES.map((f) => (
+                  <article
+                    key={f.num}
+                    className="group relative p-5 rounded-md border border-[#26262d] bg-[#0f0f14]/70 backdrop-blur-sm transition-all hover:border-[#ff7a2e]/40 hover:bg-[#13131a]/80"
+                  >
+                    <div
+                      className="text-[10px] tracking-[0.2em] text-[#ff9558] mb-2.5 transition-transform group-hover:translate-x-0.5"
+                      style={{
+                        fontFamily: "var(--font-mono), ui-monospace, monospace",
+                      }}
+                    >
+                      {f.num} ◇
+                    </div>
+                    <h3
+                      className="text-[14px] leading-tight text-[#f4f4f0] font-semibold mb-2"
+                      style={{
+                        fontFamily: "var(--font-display), Georgia, serif",
+                      }}
+                    >
+                      {f.title}
+                    </h3>
+                    <p className="text-[12px] text-[#a8a8b3] leading-snug">
+                      {f.desc}
+                    </p>
+                  </article>
+                ))}
+              </div>
+            </div>
           </div>
-        </div>
 
-        {/* Bottom bar */}
-        <div className="relative z-10 text-xs text-gray-500 text-center lg:text-left">
-          © {new Date().getFullYear()} Funcional Farma · Conciliação J&amp;J
-        </div>
-      </div>
+          {/* Footer */}
+          <div
+            className="relative z-10 px-8 lg:px-14 pb-8 lg:pb-10 flex items-center justify-between text-[10px] tracking-[0.15em] uppercase text-[#5a5a63]"
+            style={{ fontFamily: "var(--font-mono), ui-monospace, monospace" }}
+          >
+            <span>© {year} · Funcional Farma</span>
+            <span className="hidden sm:inline">Conciliação J&amp;J · Programa BR-A/DSP</span>
+          </div>
+        </aside>
 
-      {/* ─── RIGHT: form ──────────────────────────────────────────────── */}
-      <div className="lg:w-1/2 flex items-center justify-center p-8 lg:p-12 bg-[#070b16]">
-        <div className="w-full max-w-md">
-          <h2 className="text-2xl font-bold text-white mb-1">
-            Bem-vindo de volta
-          </h2>
-          <p className="text-sm text-gray-400 mb-8">
-            Entre com suas credenciais para acessar o painel.
-          </p>
+        {/* ════════════════════ RIGHT · LOGIN FORM ════════════════════ */}
+        <section
+          className="relative flex flex-col"
+          style={{ background: "#0d0d12" }}
+        >
+          {/* Subtle vertical accent line */}
+          <div
+            aria-hidden
+            className="absolute left-0 top-0 bottom-0 w-px hidden lg:block"
+            style={{
+              background:
+                "linear-gradient(180deg, transparent 0%, #1f1f26 30%, #1f1f26 70%, transparent 100%)",
+            }}
+          />
 
-          <LoginForm />
-
-          <div className="mt-6 flex items-center justify-center gap-2 text-xs text-gray-500">
-            <span className="material-symbols-outlined text-sm">lock</span>
-            Conexão segura — dados criptografados
+          {/* Top status */}
+          <div className="px-8 lg:px-14 pt-10 lg:pt-12 flex justify-end">
+            <span
+              className="text-[10px] tracking-[0.18em] uppercase text-[#7a7a83]"
+              style={{ fontFamily: "var(--font-mono), ui-monospace, monospace" }}
+            >
+              Sessão · TLS 1.3
+            </span>
           </div>
 
-          <p className="text-center text-xs text-gray-500 mt-8">
-            Ao entrar, você concorda com nossa{" "}
-            <Link href="/privacidade" className="text-gray-400 hover:text-white underline underline-offset-2">
-              política de privacidade
-            </Link>
-            .
-          </p>
-        </div>
+          {/* Form */}
+          <div className="flex-1 flex items-center justify-center px-8 lg:px-14 py-10">
+            <div className="w-full max-w-md">
+              <p
+                className="text-[10px] tracking-[0.22em] uppercase text-[#ff9558] mb-5 flex items-center gap-3"
+                style={{ fontFamily: "var(--font-mono), ui-monospace, monospace" }}
+              >
+                <span className="h-px w-8 bg-[#ff9558]" />
+                Entrar
+              </p>
+
+              <h2
+                className="text-[2.25rem] lg:text-[2.5rem] leading-[1.05] tracking-[-0.025em] text-[#f4f4f0] mb-3"
+                style={{
+                  fontFamily: "var(--font-display), Georgia, serif",
+                  fontWeight: 600,
+                }}
+              >
+                Bem-vindo de{" "}
+                <em
+                  className="italic font-normal"
+                  style={{ color: "#ff7a2e" }}
+                >
+                  volta.
+                </em>
+              </h2>
+              <p className="text-[14px] text-[#a8a8b3] mb-9">
+                Acesso restrito à equipe da Funcional Farma. Use suas
+                credenciais corporativas.
+              </p>
+
+              <LoginForm />
+            </div>
+          </div>
+
+          {/* Footer */}
+          <footer className="px-8 lg:px-14 pb-10 lg:pb-12">
+            <div className="border-t border-[#1f1f26] pt-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div className="flex items-center gap-2 text-[12px] text-[#a8a8b3]">
+                <span className="material-symbols-outlined text-[16px] text-[#6ee7a7]">
+                  lock
+                </span>
+                <span>
+                  Conexão criptografada{" "}
+                  <span className="text-[#5a5a63]">·</span> Dados protegidos
+                </span>
+              </div>
+              <div
+                className="flex items-center gap-4 text-[11px] tracking-[0.1em] uppercase"
+                style={{ fontFamily: "var(--font-mono), ui-monospace, monospace" }}
+              >
+                <Link
+                  href="/privacidade"
+                  className="text-[#7a7a83] hover:text-[#f4f4f0] transition underline-offset-4 hover:underline"
+                >
+                  Privacidade
+                </Link>
+                <span className="text-[#3a3a40]">·</span>
+                <Link
+                  href="/termos"
+                  className="text-[#7a7a83] hover:text-[#f4f4f0] transition underline-offset-4 hover:underline"
+                >
+                  Termos
+                </Link>
+              </div>
+            </div>
+          </footer>
+        </section>
       </div>
     </div>
   );

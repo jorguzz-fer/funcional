@@ -9,22 +9,62 @@ interface LogoProps {
   className?: string;
   /** Prioriza o carregamento (use em above-the-fold como sidebar/login). */
   priority?: boolean;
+  /**
+   * "auto"  → troca por tema (light=preto / dark=branco)
+   * "white" → sempre branco (use em fundos escuros fixos)
+   * "black" → sempre preto (use em fundos claros fixos)
+   */
+  variant?: "auto" | "white" | "black";
 }
 
 /**
- * Logo da Funcional Farma com troca automática por tema.
- * - Light theme → logo preto
- * - Dark theme  → logo branco
+ * Logo da Funcional Farma.
  *
- * Renderiza ambas as imagens e usa Tailwind para alternar via `dark:` —
- * sem flash de tema errado e sem dependência de JS.
+ * O modo "auto" renderiza ambas as imagens e alterna via Tailwind dark:
+ * (sem flash de tema errado). Modos "white" e "black" forçam a cor —
+ * use quando o fundo é fixo independente do tema (ex: tela de login,
+ * brand panels, e-mails).
  */
 export default function Logo({
   width = 140,
   height = 36,
   className = "",
   priority = false,
+  variant = "auto",
 }: LogoProps) {
+  if (variant === "white") {
+    return (
+      <span className={`inline-flex items-center ${className}`}>
+        <Image
+          src="/images/logo/logo-branco.png"
+          alt="Funcional Farma"
+          width={width}
+          height={height}
+          priority={priority}
+          className="object-contain"
+          style={{ width, height: "auto" }}
+        />
+      </span>
+    );
+  }
+
+  if (variant === "black") {
+    return (
+      <span className={`inline-flex items-center ${className}`}>
+        <Image
+          src="/images/logo/logo-preto.png"
+          alt="Funcional Farma"
+          width={width}
+          height={height}
+          priority={priority}
+          className="object-contain"
+          style={{ width, height: "auto" }}
+        />
+      </span>
+    );
+  }
+
+  // auto — alterna por tema
   return (
     <span className={`inline-flex items-center ${className}`}>
       <Image
