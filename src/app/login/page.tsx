@@ -123,21 +123,11 @@ export default function LoginPage() {
             </p>
 
             <h1
-              className="text-[2.5rem] sm:text-[3rem] lg:text-[3.75rem] leading-[1.02] tracking-[-0.025em] font-bold text-[#f4f4f0] max-w-2xl"
+              className="text-[2.5rem] sm:text-[3rem] lg:text-[3.75rem] leading-[1.02] tracking-[-0.025em] font-bold text-white max-w-2xl"
               style={{ fontFamily: "var(--font-display), Georgia, serif" }}
             >
               Conciliação{" "}
-              <em
-                className="font-medium"
-                style={{
-                  fontStyle: "italic",
-                  background:
-                    "linear-gradient(120deg, #F2FE8F 0%, #FFFFFF 100%)",
-                  WebkitBackgroundClip: "text",
-                  WebkitTextFillColor: "transparent",
-                  backgroundClip: "text",
-                }}
-              >
+              <em className="font-medium italic text-white">
                 que não exige
                 <br />
                 madrugada.
@@ -174,7 +164,7 @@ export default function LoginPage() {
                       {f.num} ◇
                     </div>
                     <h3
-                      className="text-[14px] leading-tight text-[#f4f4f0] font-semibold mb-2"
+                      className="text-[14px] leading-tight text-white font-semibold mb-2"
                       style={{
                         fontFamily: "var(--font-display), Georgia, serif",
                       }}
