@@ -68,7 +68,7 @@ export default function LoginForm() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="seu.nome@funcionalfarma.com.br"
-          className="w-full px-4 py-3.5 rounded-md border border-[#26262d] bg-[#0a0a10] text-[15px] text-[#f4f4f0] placeholder-[#4a4a52] focus:outline-none focus:border-[#ff7a2e] focus:ring-2 focus:ring-[#ff7a2e]/20 transition"
+          className="w-full px-4 py-3.5 rounded-md border border-[#26262d] bg-[#0a0a10] text-[15px] text-[#f4f4f0] placeholder-[#4a4a52] focus:outline-none focus:border-[#F2FE8F] focus:ring-2 focus:ring-[#F2FE8F]/25 transition"
         />
       </div>
 
@@ -99,7 +99,7 @@ export default function LoginForm() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="••••••••••••"
-            className="w-full px-4 py-3.5 pr-12 rounded-md border border-[#26262d] bg-[#0a0a10] text-[15px] text-[#f4f4f0] placeholder-[#4a4a52] focus:outline-none focus:border-[#ff7a2e] focus:ring-2 focus:ring-[#ff7a2e]/20 transition tracking-widest"
+            className="w-full px-4 py-3.5 pr-12 rounded-md border border-[#26262d] bg-[#0a0a10] text-[15px] text-[#f4f4f0] placeholder-[#4a4a52] focus:outline-none focus:border-[#F2FE8F] focus:ring-2 focus:ring-[#F2FE8F]/25 transition tracking-widest"
           />
           <button
             type="button"
@@ -118,9 +118,9 @@ export default function LoginForm() {
       <button
         type="submit"
         disabled={loading || !email || !password}
-        className="group relative w-full overflow-hidden rounded-md bg-[#ff7a2e] hover:bg-[#ff8c4a] active:bg-[#e56516] disabled:bg-[#3a2418] disabled:cursor-not-allowed transition-all py-4 mt-2 shadow-[0_8px_24px_-8px_rgba(255,122,46,0.4)] hover:shadow-[0_12px_32px_-8px_rgba(255,122,46,0.5)] disabled:shadow-none"
+        className="group relative w-full overflow-hidden rounded-md bg-[#F2FE8F] hover:bg-[#E8F87A] active:bg-[#D4E063] disabled:bg-[#252a18] disabled:cursor-not-allowed transition-all py-4 mt-2 shadow-[0_8px_24px_-8px_rgba(242,254,143,0.35)] hover:shadow-[0_12px_32px_-8px_rgba(242,254,143,0.45)] disabled:shadow-none"
       >
-        <span className="relative flex items-center justify-center gap-2.5 text-[14px] font-semibold text-[#0a0a0b] tracking-tight">
+        <span className="relative flex items-center justify-center gap-2.5 text-[14px] font-semibold text-[#0a0a0b] group-disabled:text-[#5a6332] tracking-tight">
           {loading ? (
             <>
               <span className="material-symbols-outlined animate-spin text-[18px]">

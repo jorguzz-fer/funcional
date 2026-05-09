@@ -86,7 +86,7 @@ export default function LoginPage() {
             className="absolute pointer-events-none -top-1/4 -left-1/4 w-[80%] h-[80%]"
             style={{
               background:
-                "radial-gradient(ellipse, rgba(255,107,26,0.10) 0%, transparent 65%)",
+                "radial-gradient(ellipse, rgba(242,254,143,0.08) 0%, transparent 65%)",
             }}
           />
           <div
@@ -94,7 +94,7 @@ export default function LoginPage() {
             className="absolute pointer-events-none -bottom-1/4 -right-1/4 w-[60%] h-[60%]"
             style={{
               background:
-                "radial-gradient(ellipse, rgba(96,93,255,0.06) 0%, transparent 65%)",
+                "radial-gradient(ellipse, rgba(168,200,80,0.05) 0%, transparent 65%)",
             }}
           />
 
@@ -115,10 +115,10 @@ export default function LoginPage() {
           {/* Hero */}
           <div className="relative z-10 flex-1 flex flex-col justify-center px-8 lg:px-14 py-14 lg:py-16">
             <p
-              className="text-[10px] tracking-[0.22em] text-[#ff9558] uppercase mb-7"
+              className="text-[10px] tracking-[0.22em] text-[#F2FE8F] uppercase mb-7"
               style={{ fontFamily: "var(--font-mono), ui-monospace, monospace" }}
             >
-              <span className="inline-block w-6 h-px bg-[#ff9558] mr-3 align-middle" />
+              <span className="inline-block w-6 h-px bg-[#F2FE8F] mr-3 align-middle" />
               Acesso privado · v1.0
             </p>
 
@@ -132,7 +132,7 @@ export default function LoginPage() {
                 style={{
                   fontStyle: "italic",
                   background:
-                    "linear-gradient(120deg, #ff7a2e 0%, #ffa15c 100%)",
+                    "linear-gradient(120deg, #F2FE8F 0%, #FFFFFF 100%)",
                   WebkitBackgroundClip: "text",
                   WebkitTextFillColor: "transparent",
                   backgroundClip: "text",
@@ -163,10 +163,10 @@ export default function LoginPage() {
                 {FEATURES.map((f) => (
                   <article
                     key={f.num}
-                    className="group relative p-5 rounded-md border border-[#26262d] bg-[#0f0f14]/70 backdrop-blur-sm transition-all hover:border-[#ff7a2e]/40 hover:bg-[#13131a]/80"
+                    className="group relative p-5 rounded-md border border-[#26262d] bg-[#0f0f14]/70 backdrop-blur-sm transition-all hover:border-[#F2FE8F]/40 hover:bg-[#13131a]/80"
                   >
                     <div
-                      className="text-[10px] tracking-[0.2em] text-[#ff9558] mb-2.5 transition-transform group-hover:translate-x-0.5"
+                      className="text-[10px] tracking-[0.2em] text-[#F2FE8F] mb-2.5 transition-transform group-hover:translate-x-0.5"
                       style={{
                         fontFamily: "var(--font-mono), ui-monospace, monospace",
                       }}
@@ -229,10 +229,10 @@ export default function LoginPage() {
           <div className="flex-1 flex items-center justify-center px-8 lg:px-14 py-10">
             <div className="w-full max-w-md">
               <p
-                className="text-[10px] tracking-[0.22em] uppercase text-[#ff9558] mb-5 flex items-center gap-3"
+                className="text-[10px] tracking-[0.22em] uppercase text-[#F2FE8F] mb-5 flex items-center gap-3"
                 style={{ fontFamily: "var(--font-mono), ui-monospace, monospace" }}
               >
-                <span className="h-px w-8 bg-[#ff9558]" />
+                <span className="h-px w-8 bg-[#F2FE8F]" />
                 Entrar
               </p>
 
@@ -246,7 +246,7 @@ export default function LoginPage() {
                 Bem-vindo de{" "}
                 <em
                   className="italic font-normal"
-                  style={{ color: "#ff7a2e" }}
+                  style={{ color: "#F2FE8F" }}
                 >
                   volta.
                 </em>
