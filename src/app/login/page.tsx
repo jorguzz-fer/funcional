@@ -6,21 +6,24 @@ import { Fraunces, JetBrains_Mono, Inter_Tight } from "next/font/google";
 
 const fraunces = Fraunces({
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700", "800", "900"],
+  weight: ["500", "600", "700"],
   style: ["normal", "italic"],
   variable: "--font-display",
+  display: "swap",
 });
 
 const interTight = Inter_Tight({
   subsets: ["latin"],
-  weight: ["300", "400", "500", "600", "700"],
+  weight: ["400", "500", "600"],
   variable: "--font-body",
+  display: "swap",
 });
 
 const jetbrains = JetBrains_Mono({
   subsets: ["latin"],
-  weight: ["400", "500", "700"],
+  weight: ["400"],
   variable: "--font-mono",
+  display: "swap",
 });
 
 export const metadata: Metadata = {

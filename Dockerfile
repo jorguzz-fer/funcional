@@ -14,6 +14,10 @@ WORKDIR /app
 # NODE_ENV=production faz o Next.js usar cache do prisma corretamente
 ENV NODE_ENV=production
 
+# Aumenta heap do Node para evitar OOM no build em VPS pequenas
+# (Next.js + 3 fontes Google + Prisma estouravam o default ~1.7GB)
+ENV NODE_OPTIONS="--max-old-space-size=4096"
+
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
