@@ -3,6 +3,7 @@
 import React, { useState, FormEvent } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
+import Logo from "@/components/Funcional/Logo";
 
 export default function LoginForm() {
   const router = useRouter();
@@ -38,10 +39,9 @@ export default function LoginForm() {
       <div className="w-full max-w-md">
         {/* Logo e título */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-primary-500 mb-4 shadow-lg">
-            <span className="material-symbols-outlined text-white text-3xl">receipt_long</span>
+          <div className="flex justify-center mb-4">
+            <Logo width={220} height={56} priority />
           </div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Funcional Farma</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
             Conciliação de Faturamento J&amp;J
           </p>
