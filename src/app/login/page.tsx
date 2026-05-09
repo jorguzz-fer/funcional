@@ -126,7 +126,7 @@ export default function LoginPage() {
               className="text-[2.5rem] sm:text-[3rem] lg:text-[3.75rem] leading-[1.02] tracking-[-0.025em] font-bold text-white max-w-2xl"
               style={{ fontFamily: "var(--font-display), Georgia, serif" }}
             >
-              Conciliação{" "}
+              <span style={{ color: "#F2FE8F" }}>Conciliação</span>{" "}
               <em className="font-medium italic text-white">
                 que não exige
                 <br />
@@ -164,9 +164,10 @@ export default function LoginPage() {
                       {f.num} ◇
                     </div>
                     <h3
-                      className="text-[14px] leading-tight text-white font-semibold mb-2"
+                      className="text-[14px] leading-tight font-semibold mb-2"
                       style={{
                         fontFamily: "var(--font-display), Georgia, serif",
+                        color: "#F2FE8F",
                       }}
                     >
                       {f.title}
