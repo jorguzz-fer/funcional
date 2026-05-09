@@ -228,7 +228,7 @@ export default function LoginPage() {
               </p>
 
               <h2
-                className="text-[2.25rem] lg:text-[2.5rem] leading-[1.05] tracking-[-0.025em] text-[#f4f4f0] mb-3"
+                className="text-[2.25rem] lg:text-[2.5rem] leading-[1.05] tracking-[-0.025em] text-white mb-3"
                 style={{
                   fontFamily: "var(--font-display), Georgia, serif",
                   fontWeight: 600,
