@@ -74,12 +74,12 @@ export default function FuncionalSidebar({ toggleActive }: SidebarProps) {
   return (
     <div className="sidebar-area bg-white dark:bg-[#0c1427] fixed z-[7] top-0 h-screen transition-all rounded-r-md">
       {/* Logo */}
-      <div className="logo bg-white dark:bg-[#0c1427] border-b border-gray-100 dark:border-[#172036] px-[25px] pt-[19px] pb-[15px] absolute z-[2] right-0 top-0 left-0">
+      <div className="logo bg-white dark:bg-[#0c1427] border-b border-gray-100 dark:border-[#172036] px-[25px] py-[18px] absolute z-[10] right-0 top-0 left-0 h-[100px] flex items-center">
         <Link
           href="/dashboard"
           className="transition-none relative flex items-center outline-none"
         >
-          <Logo width={150} height={40} priority />
+          <Logo width={140} height={60} priority />
         </Link>
 
         <button
@@ -92,7 +92,7 @@ export default function FuncionalSidebar({ toggleActive }: SidebarProps) {
       </div>
 
       {/* Nav */}
-      <div className="pt-[89px] px-[22px] pb-[20px] h-screen overflow-y-auto sidebar-custom-scrollbar">
+      <div className="pt-[110px] px-[22px] pb-[20px] h-screen overflow-y-auto sidebar-custom-scrollbar">
         <nav className="accordion">
           <span className="block relative font-medium uppercase text-gray-400 mb-[8px] text-xs">
             Menu
