@@ -3,6 +3,7 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import Logo from "@/components/Funcional/Logo";
 
 interface SidebarProps {
   toggleActive: () => void;
@@ -76,15 +77,9 @@ export default function FuncionalSidebar({ toggleActive }: SidebarProps) {
       <div className="logo bg-white dark:bg-[#0c1427] border-b border-gray-100 dark:border-[#172036] px-[25px] pt-[19px] pb-[15px] absolute z-[2] right-0 top-0 left-0">
         <Link
           href="/dashboard"
-          className="transition-none relative flex items-center outline-none gap-2"
+          className="transition-none relative flex items-center outline-none"
         >
-          <div className="w-7 h-7 rounded-lg bg-primary-500 flex items-center justify-center">
-            <span className="material-symbols-outlined text-white text-base">receipt_long</span>
-          </div>
-          <div className="leading-tight">
-            <span className="block font-bold text-black dark:text-white text-base">Funcional</span>
-            <span className="block text-[10px] text-gray-400 -mt-0.5">Conciliação J&J</span>
-          </div>
+          <Logo width={150} height={40} priority />
         </Link>
 
         <button
