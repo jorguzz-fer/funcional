@@ -54,8 +54,10 @@ export default function LoginPage() {
 
   return (
     // .auth-main-content ativa o reset de padding no LayoutProvider → full-width
+    // .dark força o tema escuro nesta tela independente da preferência do usuário
+    // (necessário porque globals.css usa "dark:text-white" nas headings)
     <div
-      className={`auth-main-content ${fraunces.variable} ${interTight.variable} ${jetbrains.variable}`}
+      className={`dark auth-main-content ${fraunces.variable} ${interTight.variable} ${jetbrains.variable}`}
     >
       <div
         className="min-h-screen w-full grid lg:grid-cols-[1.15fr_0.85fr]"
