@@ -53,11 +53,13 @@ export default function LoginPage() {
   const year = new Date().getFullYear();
 
   return (
-    // .auth-main-content ativa o reset de padding no LayoutProvider → full-width
-    // .dark força o tema escuro nesta tela independente da preferência do usuário
-    // (necessário porque globals.css usa "dark:text-white" nas headings)
+    // Wrapper externo precisa ter className EXATAMENTE "dark" — o globals.css
+    // declara @custom-variant dark (&:where([class=dark], [class=dark] *))
+    // que só casa com class atributo igual a "dark" (não contém).
+    // Sem isso, "dark:text-white" das headings (h1/h2/h3 do globals) não ativa.
+    <div className="dark">
     <div
-      className={`dark auth-main-content ${fraunces.variable} ${interTight.variable} ${jetbrains.variable}`}
+      className={`auth-main-content ${fraunces.variable} ${interTight.variable} ${jetbrains.variable}`}
     >
       <div
         className="min-h-screen w-full grid lg:grid-cols-[1.15fr_0.85fr]"
@@ -290,6 +292,7 @@ export default function LoginPage() {
           </footer>
         </section>
       </div>
+    </div>
     </div>
   );
 }
