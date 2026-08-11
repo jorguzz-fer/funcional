@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { writeFile, mkdir } from "node:fs/promises";
+import { writeFile, mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/db";
@@ -203,9 +203,23 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   processarFaturamento(faturamento.id, {
     autorizador: autorizadorBuf,
     proteus: proteusBuf,
-  }).catch((err) => {
-    console.error(`[api/faturamento] Erro no pipeline para ${faturamento.id}:`, err);
-  });
+  })
+    .catch((err) => {
+      console.error(`[api/faturamento] Erro no pipeline para ${faturamento.id}:`, err);
+    })
+    .finally(async () => {
+      // Expurgo das planilhas originais assim que o processamento termina
+      // (com ou sem erro). Elas contêm dados de faturamento e não são
+      // necessárias depois: o pipeline lê de buffers em memória e o fluxo de
+      // "limpar e re-processar" apaga o faturamento e exige novo upload.
+      // Reduz a janela de exposição em disco de "até o reinício do container"
+      // para "até o fim do processamento".
+      try {
+        await rm(uploadDir, { recursive: true, force: true });
+      } catch (err) {
+        console.warn(`[api/faturamento] Falha ao expurgar ${uploadDir}:`, err);
+      }
+    });
 
   // 8. Audit log
   await logAudit({

@@ -288,7 +288,9 @@ enum TipoDivergencia {
 
 model AuditLog {
   id        String   @id @default(cuid())
-  userId    String
+  // Nullable: eventos de autenticação malsucedida (e-mail inexistente,
+  // bloqueio por rate limit) não têm usuário associado.
+  userId    String?
   action    String
   entity    String
   entityId  String?
@@ -296,10 +298,14 @@ model AuditLog {
   ip        String?
   createdAt DateTime @default(now())
 
-  user User @relation(fields: [userId], references: [id])
+  // onDelete: Restrict preserva a garantia original — um usuário com trilha
+  // de auditoria não pode ser removido fisicamente, impedindo perda de
+  // atribuição. A remoção de usuário no sistema é lógica (active = false).
+  user User? @relation(fields: [userId], references: [id], onDelete: Restrict)
 
   @@index([userId, createdAt])
   @@index([entity, entityId])
+  @@index([action, createdAt])
 }
 
 // ─── Rate Limit ───────────────────────────────────────────────────────────────

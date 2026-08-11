@@ -3,25 +3,51 @@ import { redirect, notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import Link from "next/link";
 
+// Os rótulos abaixo devem espelhar exatamente as strings gravadas por
+// logAudit/logAuthEvent nas rotas de API e em src/lib/auth.ts.
 const ACTION_LABEL: Record<string, string> = {
-  "faturamento.create": "Criou Faturamento",
-  "faturamento.delete": "Deletou Faturamento",
-  "faturamento.export": "Exportou Planilha",
-  "usuario.create":    "Criou Usuário",
-  "usuario.update":    "Atualizou Usuário",
-  "usuario.delete":    "Deletou Usuário",
-  "usuario.activate":  "Ativou Usuário",
-  "usuario.deactivate":"Desativou Usuário",
-  "perfil.update":     "Atualizou Perfil",
-  "perfil.senha":      "Alterou Senha",
+  // Autenticação
+  "auth.login":           "Login",
+  "auth.login_failed":    "Falha de Login",
+  "auth.logout":          "Logout",
+  "auth.rate_limited":    "Bloqueio por Tentativas",
+  // Faturamento
+  "faturamento.create":   "Criou Faturamento",
+  "faturamento.delete":   "Deletou Faturamento",
+  "faturamento.export":   "Exportou Planilha",
+  "divergencia.resolver": "Resolveu Divergência",
+  // Usuários e perfil
+  "usuario.criar":        "Criou Usuário",
+  "usuario.editar":       "Atualizou Usuário",
+  "usuario.desativar":    "Desativou Usuário",
+  "perfil.editar":        "Atualizou Perfil",
+  "perfil.trocar-senha":  "Alterou Senha",
 };
 
 const ACTION_COLOR: Record<string, string> = {
+  "auth.login":         "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
+  "auth.login_failed":  "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
+  "auth.rate_limited":  "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
+  "auth.logout":        "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300",
   "faturamento.create": "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
   "faturamento.delete": "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
-  "usuario.delete":     "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
-  "usuario.deactivate": "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
+  "usuario.desativar":  "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
 };
+
+/** Motivos de falha de autenticação, para leitura por auditor não técnico. */
+const REASON_LABEL: Record<string, string> = {
+  invalid_input:    "dados inválidos",
+  user_not_found:   "usuário inexistente",
+  user_inactive:    "usuário inativo",
+  invalid_password: "senha incorreta",
+};
+
+/** Extrai um campo string de `meta` (Json) sem lançar em formato inesperado. */
+function metaString(meta: unknown, campo: string): string | null {
+  if (!meta || typeof meta !== "object" || Array.isArray(meta)) return null;
+  const valor = (meta as Record<string, unknown>)[campo];
+  return typeof valor === "string" ? valor : null;
+}
 
 interface Props {
   searchParams: Promise<{ page?: string; action?: string; userId?: string }>;
@@ -144,13 +170,36 @@ export default async function AuditLogPage({ searchParams }: Props) {
                       {log.createdAt.toLocaleString("pt-BR")}
                     </td>
                     <td className="px-6 py-3">
-                      <p className="font-medium text-gray-900 dark:text-white text-sm">{log.user.name}</p>
-                      <p className="text-xs text-gray-400">{log.user.email}</p>
+                      {log.user ? (
+                        <>
+                          <p className="font-medium text-gray-900 dark:text-white text-sm">{log.user.name}</p>
+                          <p className="text-xs text-gray-400">{log.user.email}</p>
+                        </>
+                      ) : (
+                        <>
+                          {/* Eventos sem usuário: falha de login com e-mail
+                              inexistente ou bloqueio por rate limit. */}
+                          <p className="font-medium text-gray-400 dark:text-gray-500 text-sm italic">
+                            Não identificado
+                          </p>
+                          <p className="text-xs text-gray-400">
+                            {metaString(log.meta, "email") ?? "—"}
+                          </p>
+                        </>
+                      )}
                     </td>
                     <td className="px-6 py-3">
                       <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${ACTION_COLOR[log.action] ?? "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300"}`}>
                         {ACTION_LABEL[log.action] ?? log.action}
                       </span>
+                      {(() => {
+                        const reason = metaString(log.meta, "reason");
+                        return reason ? (
+                          <span className="block text-[11px] text-gray-400 mt-0.5">
+                            {REASON_LABEL[reason] ?? reason}
+                          </span>
+                        ) : null;
+                      })()}
                     </td>
                     <td className="px-6 py-3 text-xs text-gray-600 dark:text-gray-300">
                       <span className="font-medium">{log.entity}</span>
