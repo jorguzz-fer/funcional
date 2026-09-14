@@ -84,15 +84,18 @@ Identificador técnico do pacote: `funcional-farma`, versão `1.0.0`. É um sist
 | Ingestão de arquivos | Upload das planilhas do Autorizador e do Proteus (`.xlsx`, `.xls`, `.csv`, até 50 MB cada) |
 | Limpeza e normalização | Rotinas dedicadas por origem (`limparAutorizador`, `limparProteus`) |
 | Deduplicação histórica | Bloqueio automático de vouchers já faturados em períodos anteriores |
-| Conciliação automática | Match primário por nota fiscal normalizada, com fallback por código de ordem de pagamento |
-| Detecção de divergências | 8 tipos catalogados (abaixo) |
+| Conciliação automática | Match primário por nota fiscal normalizada; o código da ordem de pagamento (OP) é usado apenas como complemento quando o Proteus o informa — a OP pertence ao Autorizador e não é exigida no relatório do Proteus. Pedidos com OP mas ainda sem NF ficam "aguardando NF", sem gerar divergência |
+| Detecção de divergências | 9 tipos catalogados (abaixo) |
+| Reprocessamento | Substituição das planilhas de um faturamento já conciliado (mantendo o registro e permitindo ajustar o período) e exclusão do faturamento, ambos auditados |
 | Tratativa de divergências | Fluxo de resolução com registro de responsável, data e notas |
 | Exportação | Geração de planilhas nos formatos "Funcional" e "Proteus", com segmentação Grandes Redes × Convencionais |
 | Análises | Painéis por ano, por clínica e por medicamento |
 | Trilha de auditoria | Registro das operações sensíveis com usuário, entidade, IP e timestamp |
 
 **Tipos de divergência detectados automaticamente:**
-`LINHA_FALTANTE`, `VALOR_DIVERGENTE` (tolerância de R$ 0,01), `NF_ABREVIADA`, `CNPJ_DIFERENTE`, `RAZAO_SOCIAL_DIFERENTE`, `LOTE_AUSENTE`, `VOUCHER_SEM_FINALIZACAO`, `OUTRO`.
+`LINHA_FALTANTE`, `VALOR_DIVERGENTE` (tolerância de R$ 0,01), `NF_ABREVIADA`, `CNPJ_DIFERENTE`, `RAZAO_SOCIAL_DIFERENTE`, `LOTE_AUSENTE`, `VOUCHER_SEM_FINALIZACAO`, `VALOR_NAO_RECONHECIDO` (célula de valor com conteúdo que não pôde ser lido como número), `OUTRO`.
+
+**Leitura de valores:** as colunas de valor aceitam células numéricas ou em formato "Geral" (texto), nos padrões brasileiro ("R$ 1.234,56", "1.234,56") e internacional ("1234.56", "1,234.56"), inclusive negativos contábeis. Não é necessário editar a planilha extraída do Autorizador antes do upload.
 
 **Benefícios diretos:** redução do tempo de fechamento, eliminação de erros de digitação e de PROCV, rastreabilidade completa para auditoria e conformidade com a LGPD por desenho (não trafegam nome nem CPF de paciente).
 
@@ -545,7 +548,7 @@ A base de autenticação usa **NextAuth v5 (Auth.js)**, biblioteca que suporta n
 #### ✅ O que já favorece a recuperação
 
 - **Todo o estado relevante está no PostgreSQL** — não há dado de negócio em sistema de arquivos, cache ou memória. Isso significa que **um backup do banco é suficiente para restaurar 100% da operação**, o que simplifica muito a estratégia de backup;
-- **Arquivos de origem não são estado crítico**: as planilhas do Autorizador e do Proteus são reproduzíveis a partir dos sistemas de origem, e o sistema suporta **reprocessamento de um faturamento** sem duplicar registros (existe deduplicação por voucher + articulação e um botão de "limpar e reprocessar");
+- **Arquivos de origem não são estado crítico**: as planilhas do Autorizador e do Proteus são reproduzíveis a partir dos sistemas de origem, e o sistema suporta **reprocessamento de um faturamento** sem duplicar registros (existe deduplicação por voucher + articulação e a ação "Substituir planilhas", que refaz a conciliação mantendo o mesmo faturamento);
 - **Esquema de banco versionado** em migrações Git — a estrutura pode ser recriada do zero de forma determinística;
 - **Imagem de aplicação reproduzível** via Dockerfile.
 
@@ -723,11 +726,13 @@ Hospedar no Brasil elimina integralmente a discussão de transferência internac
                  (permite reprocessar sem duplicar)
 
 5. CONCILIAÇÃO   Match primário por nota fiscal normalizada
-                 Fallback por código de ordem de pagamento
+                 Código de ordem de pagamento usado só como complemento
+                 (a OP pertence ao Autorizador; não é exigida no Proteus —
+                 pedido com OP e sem NF fica "aguardando NF", sem divergência)
                  Comparação de valores com tolerância de R$ 0,01
                  Verificação de CNPJ e razão social
 
-6. DIVERGÊNCIAS  Classificação automática em 8 tipos
+6. DIVERGÊNCIAS  Classificação automática em 9 tipos
                  → tratativa com registro de autor, data e notas
 
 7. EXPORTAÇÃO    Planilhas nos layouts Funcional e Proteus
@@ -883,7 +888,7 @@ Ainda que sem validação externa, o sistema foi desenvolvido com controles alin
 
 **Toda a lógica do sistema é determinística.** As regras de conciliação são condicionais explícitas, escritas e auditáveis linha a linha por qualquer pessoa com acesso ao código:
 
-- Correspondência primária por nota fiscal normalizada; se ausente, correspondência por código de ordem de pagamento;
+- Correspondência primária por nota fiscal normalizada; se ausente, tentativa de correspondência por código de ordem de pagamento (quando o Proteus o informa) — caso contrário o pedido fica pendente, aguardando a nota fiscal;
 - Comparação de valores com tolerância fixa de R$ 0,01;
 - Comparação literal de CNPJ e de razão social;
 - Deduplicação por chave voucher + articulação.

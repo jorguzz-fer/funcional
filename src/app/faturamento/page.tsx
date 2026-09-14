@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { ROLES_WRITE, type Role } from "@/lib/authz";
 import Link from "next/link";
 import DeleteFaturamentoButton from "@/components/Funcional/DeleteFaturamentoButton";
 
@@ -29,7 +30,9 @@ export default async function FaturamentoListPage() {
   const session = await auth();
   if (!session) redirect("/login");
 
-  const isAdmin = (session.user as { role?: string }).role === "ADMIN";
+  // Quem pode criar faturamentos também pode excluí-los (fica na auditoria)
+  const role = (session.user as { role?: string }).role as Role | undefined;
+  const podeExcluir = !!role && ROLES_WRITE.includes(role);
 
   const faturamentos = await prisma.faturamento.findMany({
     orderBy: { dataInicio: "desc" },
@@ -132,7 +135,7 @@ export default async function FaturamentoListPage() {
                         >
                           Abrir →
                         </Link>
-                        {isAdmin && (
+                        {podeExcluir && (
                           <DeleteFaturamentoButton id={fat.id} periodo={periodo} />
                         )}
                       </div>

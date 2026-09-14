@@ -1,15 +1,22 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { requireRole, ROLES_ADMIN } from "@/lib/authz";
+import { requireRole, ROLES_WRITE } from "@/lib/authz";
 import { logAudit, getClientIp } from "@/lib/audit";
-import { NextRequest } from "next/server";
+import { processamentoEmAndamento } from "@/lib/faturamento/upload";
 
 interface Params {
   params: Promise<{ id: string }>;
 }
 
+/**
+ * Exclui um faturamento (conciliação) e todos os dados derivados dele.
+ *
+ * Liberado para quem pode criar faturamentos (ADMIN, SUPERVISOR, ANALYST):
+ * quem sobe uma planilha errada precisa poder desfazer. Toda exclusão fica
+ * registrada na trilha de auditoria com o usuário e o período.
+ */
 export async function DELETE(req: NextRequest, { params }: Params) {
-  const auth = await requireRole(ROLES_ADMIN);
+  const auth = await requireRole(ROLES_WRITE);
   if (auth.error) return auth.error;
   const { session } = auth;
 
@@ -17,20 +24,36 @@ export async function DELETE(req: NextRequest, { params }: Params) {
 
   const faturamento = await prisma.faturamento.findUnique({
     where: { id },
-    select: { id: true, dataInicio: true, dataFechamento: true },
+    select: {
+      id: true,
+      dataInicio: true,
+      dataFechamento: true,
+      status: true,
+      updatedAt: true,
+      uploads: { select: { erros: true } },
+    },
   });
 
   if (!faturamento) {
     return NextResponse.json({ error: "Faturamento não encontrado" }, { status: 404 });
   }
 
-  // Delete in foreign-key order to satisfy constraints
-  await prisma.divergencia.deleteMany({ where: { faturamentoId: id } });
-  await prisma.conciliacao.deleteMany({ where: { faturamentoId: id } });
-  await prisma.pedido.deleteMany({ where: { faturamentoId: id } });
-  await prisma.ordemPagamento.deleteMany({ where: { faturamentoId: id } });
-  await prisma.uploadArquivo.deleteMany({ where: { faturamentoId: id } });
-  await prisma.faturamento.delete({ where: { id } });
+  if (processamentoEmAndamento(faturamento)) {
+    return NextResponse.json(
+      { error: "As planilhas deste faturamento ainda estão sendo processadas. Aguarde a conclusão para excluir." },
+      { status: 409 },
+    );
+  }
+
+  // Delete in foreign-key order, atomically (tudo ou nada)
+  await prisma.$transaction([
+    prisma.divergencia.deleteMany({ where: { faturamentoId: id } }),
+    prisma.conciliacao.deleteMany({ where: { faturamentoId: id } }),
+    prisma.pedido.deleteMany({ where: { faturamentoId: id } }),
+    prisma.ordemPagamento.deleteMany({ where: { faturamentoId: id } }),
+    prisma.uploadArquivo.deleteMany({ where: { faturamentoId: id } }),
+    prisma.faturamento.delete({ where: { id } }),
+  ]);
 
   await logAudit({
     userId: session.user!.id as string,
@@ -40,6 +63,7 @@ export async function DELETE(req: NextRequest, { params }: Params) {
     meta: {
       dataInicio: faturamento.dataInicio.toISOString(),
       dataFechamento: faturamento.dataFechamento.toISOString(),
+      status: faturamento.status,
     },
     ip: getClientIp(req),
   });

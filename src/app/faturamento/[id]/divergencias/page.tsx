@@ -13,6 +13,7 @@ const TIPO_LABEL: Record<string, string> = {
   RAZAO_SOCIAL_DIFERENTE:  "Razão Social Divergente",
   LOTE_AUSENTE:            "Lote Ausente",
   VOUCHER_SEM_FINALIZACAO: "Voucher Não Finalizado",
+  VALOR_NAO_RECONHECIDO:   "Valor Não Reconhecido",
   OUTRO:                   "Outro",
 };
 

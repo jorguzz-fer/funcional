@@ -281,6 +281,7 @@ enum TipoDivergencia {
   RAZAO_SOCIAL_DIFERENTE
   LOTE_AUSENTE
   VOUCHER_SEM_FINALIZACAO
+  VALOR_NAO_RECONHECIDO // célula de valor com conteúdo que não pôde ser lido como número
   OUTRO
 }
 

@@ -11,6 +11,7 @@ const TIPO_LABEL: Record<string, string> = {
   RAZAO_SOCIAL_DIFERENTE:  "Razão Social Divergente",
   LOTE_AUSENTE:            "Lote Ausente",
   VOUCHER_SEM_FINALIZACAO: "Voucher Não Finalizado",
+  VALOR_NAO_RECONHECIDO:   "Valor Não Reconhecido",
   OUTRO:                   "Outro",
 };
 
@@ -22,6 +23,7 @@ const TIPO_COLOR: Record<string, string> = {
   RAZAO_SOCIAL_DIFERENTE:  "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
   LOTE_AUSENTE:            "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300",
   VOUCHER_SEM_FINALIZACAO: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
+  VALOR_NAO_RECONHECIDO:   "bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-300",
   OUTRO:                   "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400",
 };
 

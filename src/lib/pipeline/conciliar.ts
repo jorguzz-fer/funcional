@@ -9,7 +9,12 @@ import { normalizarCnpj, normalizarTexto } from "./utils";
  *   PRIMARY   — numeroNotaFiscal (Autorizador) ↔ numeroNotaFiscal (Proteus)
  *               "a gente usa a nota fiscal de referência" — Gabi
  *   FALLBACK  — codigoOrdemPagamento (Autorizador) ↔ codigoOrdem (Proteus)
- *               used when a pedido has no NF yet.
+ *               tried when a pedido has no NF yet, ONLY as a bonus: the
+ *               ordem de pagamento belongs to the Autorizador and the
+ *               Proteus base normally does not carry that code. So a pedido
+ *               whose OP is not found in the Proteus is NOT a divergence —
+ *               its conciliação stays PENDENTE (aguardando NF) until the
+ *               nota fiscal is issued and shows up in the Proteus.
  *
  * Pedidos are grouped by their match key so the sum of valorUnitario
  * across the group can be compared against the single OrdemPagamento.valorTotal.
@@ -117,13 +122,28 @@ export async function executarConciliacao(faturamentoId: string): Promise<void> 
       0,
     );
 
+    // Pedido sem NF, apenas com código de ordem de pagamento, e a OP não
+    // consta no Proteus. A OP é informação do Autorizador — a base do Proteus
+    // normalmente não traz esse código — portanto isso NÃO é divergência:
+    // a conciliação fica PENDENTE (aguardando a nota fiscal).
+    if (!ordem && matchType === "CODIGO") {
+      for (const pedido of gruPedidos) {
+        await upsertConciliacao({
+          faturamentoId,
+          pedidoId: pedido.id,
+          ordemId: null,
+          status: "PENDENTE",
+          valorAutorizador: somaPedidos,
+          valorProteus: null,
+          diferenca: null,
+        });
+      }
+      continue;
+    }
+
     for (const pedido of gruPedidos) {
       if (!ordem) {
-        // Ordem not found in Proteus
-        const descricao = matchType === "NF"
-          ? `NF "${pedido.numeroNotaFiscal}" não encontrada no Proteus`
-          : `Código de ordem "${matchKey}" não encontrado no Proteus`;
-
+        // NF informada no Autorizador mas não encontrada no Proteus
         await upsertConciliacao({
           faturamentoId,
           pedidoId: pedido.id,
@@ -136,7 +156,7 @@ export async function executarConciliacao(faturamentoId: string): Promise<void> 
         await criarDivergencia({
           faturamentoId,
           tipo: "LINHA_FALTANTE",
-          descricao,
+          descricao: `NF "${pedido.numeroNotaFiscal}" não encontrada no Proteus`,
           detalhe: { matchKey, matchType, pedidoId: pedido.id },
           valorAutorizador: somaPedidos,
         });
