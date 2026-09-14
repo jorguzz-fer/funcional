@@ -1,11 +1,12 @@
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { ROLES_WRITE, type Role } from "@/lib/authz";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import PedidosTable from "@/components/Funcional/PedidosTable";
 import ProcessingBanner from "@/components/Funcional/ProcessingBanner";
-import LimparReprocessarButton from "@/components/Funcional/LimparReprocessarButton";
+import ExcluirFaturamentoButton from "@/components/Funcional/ExcluirFaturamentoButton";
 
 const STATUS_LABEL: Record<string, string> = {
   RASCUNHO:   "Rascunho",
@@ -32,7 +33,9 @@ export default async function FaturamentoDetailPage({ params, searchParams }: Pr
   const session = await auth();
   if (!session) redirect("/login");
 
-  const isAdmin = (session.user as { role?: string }).role === "ADMIN";
+  // Quem pode criar faturamentos também pode substituir as planilhas ou excluir
+  const role = (session.user as { role?: string }).role as Role | undefined;
+  const podeEditar = !!role && ROLES_WRITE.includes(role);
 
   const { id } = await params;
   const sp = await searchParams;
@@ -49,6 +52,7 @@ export default async function FaturamentoDetailPage({ params, searchParams }: Pr
           divergencias: { where: { resolvido: false } },
         },
       },
+      uploads: { select: { tipo: true, erros: true } },
     },
   });
 
@@ -57,13 +61,24 @@ export default async function FaturamentoDetailPage({ params, searchParams }: Pr
   const fmt = (d: Date) => d.toLocaleDateString("pt-BR");
   const periodo = `${fmt(faturamento.dataInicio)} — ${fmt(faturamento.dataFechamento)}`;
 
+  // Falha do pipeline: registrada nos uploads (o status volta para RASCUNHO)
+  const erroUpload = faturamento.uploads.find((u) => u.erros != null)?.erros as
+    | { mensagem?: string; timestamp?: string }
+    | null
+    | undefined;
+  const processando =
+    !erroUpload && (faturamento.status === "RASCUNHO" || faturamento.status === "EM_REVISAO");
+
   // Counts for summary cards
-  const [totalPedidos, pedidosValidos, pedidosExcluidos, divergenciasPendentes, valorTotal] =
+  const [totalPedidos, pedidosValidos, pedidosExcluidos, divergenciasPendentes, aguardandoNF, valorTotal] =
     await Promise.all([
       prisma.pedido.count({ where: { faturamentoId: id } }),
       prisma.pedido.count({ where: { faturamentoId: id, excluido: false } }),
       prisma.pedido.count({ where: { faturamentoId: id, excluido: true } }),
       prisma.divergencia.count({ where: { faturamentoId: id, resolvido: false } }),
+      // Pedidos com ordem de pagamento mas ainda sem NF: não conciliáveis com o
+      // Proteus por enquanto (não é divergência — a OP só existe no Autorizador)
+      prisma.conciliacao.count({ where: { faturamentoId: id, status: "PENDENTE" } }),
       // Sum from Proteus (OrdemPagamento) — this is the actual billing amount
       prisma.ordemPagamento.aggregate({
         where: { faturamentoId: id },
@@ -124,8 +139,34 @@ export default async function FaturamentoDetailPage({ params, searchParams }: Pr
   return (
     <div className="p-[25px]">
       {/* Processing banner while pipeline is running */}
-      {(faturamento.status === "RASCUNHO" || faturamento.status === "EM_REVISAO") && (
-        <ProcessingBanner faturamentoId={id} />
+      {processando && <ProcessingBanner faturamentoId={id} />}
+
+      {/* Pipeline failure: the spreadsheets could not be processed */}
+      {erroUpload && (
+        <div className="mb-6 flex items-start gap-3 p-4 rounded-xl bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800">
+          <span className="material-symbols-outlined text-red-600 dark:text-red-400 text-xl flex-shrink-0 mt-0.5">
+            error
+          </span>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-red-800 dark:text-red-300">
+              Falha no processamento das planilhas
+            </p>
+            <p className="text-xs text-red-700 dark:text-red-400 mt-0.5 break-words">
+              {erroUpload.mensagem ?? "Erro desconhecido"}
+              {erroUpload.timestamp
+                ? ` — ${new Date(erroUpload.timestamp).toLocaleString("pt-BR")}`
+                : ""}
+            </p>
+            {podeEditar && (
+              <Link
+                href={`/faturamento/${id}/reprocessar`}
+                className="text-xs font-medium text-red-700 dark:text-red-300 hover:underline mt-1 inline-block"
+              >
+                Substituir planilhas e tentar novamente →
+              </Link>
+            )}
+          </div>
+        </div>
       )}
 
       {/* Header */}
@@ -149,9 +190,19 @@ export default async function FaturamentoDetailPage({ params, searchParams }: Pr
             Fechamento em {faturamento.dataFechamento.toLocaleDateString("pt-BR")}
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          {isAdmin && (
-            <LimparReprocessarButton id={id} periodo={periodo} />
+        <div className="flex flex-wrap items-center gap-3">
+          {podeEditar && (
+            <>
+              <Link
+                href={`/faturamento/${id}/reprocessar`}
+                title="Subir novas planilhas para este período — a conciliação é refeita mantendo o mesmo faturamento"
+                className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-[#2a3a5c] rounded-lg hover:bg-gray-50 dark:hover:bg-[#0f1c35] transition"
+              >
+                <span className="material-symbols-outlined text-lg">sync</span>
+                Substituir planilhas
+              </Link>
+              <ExcluirFaturamentoButton id={id} periodo={periodo} />
+            </>
           )}
           <Link
             href={`/faturamento/${id}/export`}
@@ -164,7 +215,7 @@ export default async function FaturamentoDetailPage({ params, searchParams }: Pr
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-4 mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-4 mb-6">
         <div className="bg-white dark:bg-[#0d1526] rounded-2xl p-4 border border-gray-100 dark:border-[#1e2d47] shadow-sm">
           <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Total de Pedidos</p>
           <p className="text-2xl font-bold text-gray-900 dark:text-white">{totalPedidos}</p>
@@ -183,7 +234,14 @@ export default async function FaturamentoDetailPage({ params, searchParams }: Pr
             {divergenciasPendentes}
           </p>
         </div>
-        <div className="bg-white dark:bg-[#0d1526] rounded-2xl p-4 border border-gray-100 dark:border-[#1e2d47] shadow-sm col-span-2 sm:col-span-1">
+        <div
+          className="bg-white dark:bg-[#0d1526] rounded-2xl p-4 border border-gray-100 dark:border-[#1e2d47] shadow-sm"
+          title="Pedidos com ordem de pagamento mas ainda sem nota fiscal — só podem ser conciliados com o Proteus depois que a NF for emitida. Não é divergência."
+        >
+          <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Aguardando NF</p>
+          <p className="text-2xl font-bold text-amber-600 dark:text-amber-400">{aguardandoNF}</p>
+        </div>
+        <div className="bg-white dark:bg-[#0d1526] rounded-2xl p-4 border border-gray-100 dark:border-[#1e2d47] shadow-sm">
           <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Valor Total</p>
           <p className="text-xl font-bold text-gray-900 dark:text-white">
             {valorTotalNum.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}

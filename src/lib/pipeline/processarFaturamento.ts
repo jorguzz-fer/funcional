@@ -77,7 +77,11 @@ export async function processarFaturamento(
       prazoFaturamentoDias: 90,
     });
 
-    const ordensInput = limparProteus(rowsPro);
+    // headerRowPro é índice 0-based da linha de cabeçalho → primeira linha de
+    // dados, em numeração de planilha (1-based), é headerRowPro + 2.
+    const { ordens: ordensInput, valoresNaoReconhecidos } = limparProteus(rowsPro, {
+      primeiraLinha: headerRowPro + 2,
+    });
 
     // 5b. Deduplicação histórica — voucher já faturado em outro período?
     // Conforme PPT slide 4: "PROCV com base consolidada de atendimentos faturados,
@@ -121,6 +125,29 @@ export async function processarFaturamento(
       });
     }
 
+    // 8b. Linhas do Proteus cujo valor não pôde ser lido como número viram
+    // divergência visível — antes eram descartadas em silêncio.
+    for (const l of valoresNaoReconhecidos) {
+      await prisma.divergencia.create({
+        data: {
+          faturamentoId,
+          tipo: "VALOR_NAO_RECONHECIDO",
+          descricao:
+            `Linha ${l.linha} do Proteus ignorada: valor "${l.valorBruto}" não reconhecido como número` +
+            (l.numeroNotaFiscal ? ` — NF "${l.numeroNotaFiscal}"` : ""),
+          // Só inclui as chaves preenchidas — a UI exibe cada chave do detalhe
+          // e um "null" literal só confunde o usuário.
+          detalhe: {
+            origem: "PROTEUS",
+            linha: l.linha,
+            valorBruto: l.valorBruto,
+            ...(l.numeroNotaFiscal ? { numeroNotaFiscal: l.numeroNotaFiscal } : {}),
+            ...(l.codigoOrdem ? { codigoOrdem: l.codigoOrdem } : {}),
+          } as Prisma.InputJsonValue,
+        },
+      });
+    }
+
     // 9. Run conciliation
     await executarConciliacao(faturamentoId);
 
@@ -150,7 +177,8 @@ export async function processarFaturamento(
 
     console.log(
       `[pipeline] Faturamento ${faturamentoId} processado com sucesso. ` +
-        `Pedidos: ${pedidosInput.length}, Ordens: ${ordensInput.length}`,
+        `Pedidos: ${pedidosInput.length}, Ordens: ${ordensInput.length}, ` +
+        `Valores não reconhecidos (Proteus): ${valoresNaoReconhecidos.length}`,
     );
   } catch (err) {
     const mensagem = err instanceof Error ? err.message : String(err);
@@ -167,6 +195,14 @@ export async function processarFaturamento(
     await prisma.uploadArquivo.update({
       where: { id: uploadProteus.id },
       data: { erros: erroPayload },
+    });
+
+    // 12. Volta o status para RASCUNHO: o faturamento não ficou "em revisão",
+    // ficou com falha. Isso libera o usuário para substituir as planilhas e
+    // reprocessar (a UI mostra o erro registrado nos uploads).
+    await prisma.faturamento.update({
+      where: { id: faturamentoId },
+      data: { status: "RASCUNHO" },
     });
   }
 }
@@ -249,6 +285,27 @@ async function salvarPedido(faturamentoId: string, p: PedidoInput): Promise<void
         tipo: "LOTE_AUSENTE",
         descricao: `Pedido ${p.voucher} sem número de lote para medicamento que exige rastreabilidade`,
         detalhe: { pedidoId: savedId, voucher: p.voucher } as Prisma.InputJsonValue,
+      },
+    });
+  }
+
+  // Valor com conteúdo que não pôde ser lido como número (ex.: célula em
+  // formato "Geral" com texto fora do padrão). O pedido é mantido, mas o
+  // usuário precisa saber que o valor ficou vazio.
+  if (p.alertas?.includes("VALOR_NAO_RECONHECIDO")) {
+    await prisma.divergencia.create({
+      data: {
+        faturamentoId,
+        tipo: "VALOR_NAO_RECONHECIDO",
+        descricao:
+          `Pedido ${p.voucher}: valor "${p.valorUnitarioBruto ?? ""}" não reconhecido como número ` +
+          `— verifique o formato da célula na planilha do Autorizador`,
+        detalhe: {
+          origem: "AUTORIZADOR",
+          pedidoId: savedId,
+          voucher: p.voucher,
+          valorBruto: p.valorUnitarioBruto ?? "",
+        } as Prisma.InputJsonValue,
       },
     });
   }

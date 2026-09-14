@@ -2,12 +2,27 @@
 
 import React, { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 type FileSlot = "autorizador" | "proteus";
 
 interface FileState {
   autorizador: File | null;
   proteus: File | null;
+}
+
+interface Props {
+  /**
+   * "novo" (default): cria um faturamento (POST /api/faturamento).
+   * "reprocessar": substitui as planilhas de um faturamento existente,
+   * mantendo o registro (POST /api/faturamento/[id]/reprocessar).
+   */
+  modo?: "novo" | "reprocessar";
+  faturamentoId?: string;
+  /** Período pré-preenchido (YYYY-MM-DD), usado no modo reprocessar. */
+  periodoInicial?: { dataInicio: string; dataFim: string };
+  /** Números do processamento atual, exibidos no aviso de substituição. */
+  resumoAtual?: { pedidos: number; divergenciasResolvidas: number };
 }
 
 function defaultDataInicio(): string {
@@ -23,13 +38,22 @@ function defaultDataFim(): string {
   return d.toISOString().slice(0, 10);
 }
 
-export default function UploadFaturamento() {
+export default function UploadFaturamento({
+  modo = "novo",
+  faturamentoId,
+  periodoInicial,
+  resumoAtual,
+}: Props) {
   const router = useRouter();
+  const reprocessar = modo === "reprocessar";
+
   const [files, setFiles] = useState<FileState>({ autorizador: null, proteus: null });
-  const [dataInicio, setDataInicio] = useState(defaultDataInicio());
-  const [dataFim, setDataFim] = useState(defaultDataFim());
+  const [dataInicio, setDataInicio] = useState(periodoInicial?.dataInicio ?? defaultDataInicio());
+  const [dataFim, setDataFim] = useState(periodoInicial?.dataFim ?? defaultDataFim());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  // Faturamento já existente para o período informado (resposta 409 da API)
+  const [conflito, setConflito] = useState<{ id: string } | null>(null);
   const autRef = useRef<HTMLInputElement>(null);
   const proRef = useRef<HTMLInputElement>(null);
 
@@ -52,6 +76,7 @@ export default function UploadFaturamento() {
       return;
     }
     setError("");
+    setConflito(null);
     setLoading(true);
 
     try {
@@ -61,14 +86,21 @@ export default function UploadFaturamento() {
       formData.append("dataInicio", dataInicio);
       formData.append("dataFim", dataFim);
 
-      const res = await fetch("/api/faturamento", {
+      const endpoint = reprocessar
+        ? `/api/faturamento/${faturamentoId}/reprocessar`
+        : "/api/faturamento";
+
+      const res = await fetch(endpoint, {
         method: "POST",
         body: formData,
       });
 
       if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
+        const body: { error?: string; existingId?: string } = await res.json().catch(() => ({}));
         setError(body.error ?? "Erro ao processar o upload.");
+        if (res.status === 409 && body.existingId) {
+          setConflito({ id: body.existingId });
+        }
         return;
       }
 
@@ -86,7 +118,48 @@ export default function UploadFaturamento() {
       <form onSubmit={handleSubmit} className="space-y-6">
         {error && (
           <div className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 text-sm">
-            {error}
+            <p>{error}</p>
+            {conflito && (
+              <div className="flex flex-wrap gap-2 mt-3">
+                <Link
+                  href={`/faturamento/${conflito.id}`}
+                  className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg border border-red-300 dark:border-red-700 text-red-700 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/30 transition"
+                >
+                  <span className="material-symbols-outlined text-sm">open_in_new</span>
+                  Abrir faturamento existente
+                </Link>
+                {!reprocessar && (
+                  <Link
+                    href={`/faturamento/${conflito.id}/reprocessar`}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-red-600 hover:bg-red-700 text-white transition"
+                  >
+                    <span className="material-symbols-outlined text-sm">sync</span>
+                    Substituir as planilhas do existente
+                  </Link>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Aviso de substituição (modo reprocessar) */}
+        {reprocessar && (
+          <div className="p-4 rounded-xl bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800 flex items-start gap-3">
+            <span className="material-symbols-outlined text-amber-600 dark:text-amber-400 text-xl flex-shrink-0 mt-0.5">
+              warning
+            </span>
+            <div className="text-sm">
+              <p className="font-semibold text-amber-800 dark:text-amber-300">
+                Os dados atuais deste faturamento serão substituídos
+              </p>
+              <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">
+                Pedidos{resumoAtual ? ` (${resumoAtual.pedidos})` : ""}, ordens de pagamento, conciliações e divergências
+                {resumoAtual && resumoAtual.divergenciasResolvidas > 0
+                  ? ` — inclusive as ${resumoAtual.divergenciasResolvidas} já resolvida${resumoAtual.divergenciasResolvidas !== 1 ? "s" : ""} —`
+                  : ""}{" "}
+                serão descartados e recalculados a partir das novas planilhas. O histórico de auditoria é mantido.
+              </p>
+            </div>
           </div>
         )}
 
@@ -165,6 +238,11 @@ export default function UploadFaturamento() {
             <>
               <span className="material-symbols-outlined animate-spin text-lg">progress_activity</span>
               Processando planilhas...
+            </>
+          ) : reprocessar ? (
+            <>
+              <span className="material-symbols-outlined text-lg">sync</span>
+              Substituir planilhas e reconciliar
             </>
           ) : (
             <>

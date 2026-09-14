@@ -2,13 +2,18 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 interface Props {
   id: string;
   periodo: string;
 }
 
-export default function LimparReprocessarButton({ id, periodo }: Props) {
+/**
+ * Exclusão definitiva de um faturamento (conciliação), com modal de
+ * confirmação. Após excluir, volta para o histórico de faturamentos.
+ */
+export default function ExcluirFaturamentoButton({ id, periodo }: Props) {
   const router = useRouter();
   const [open, setOpen]       = useState(false);
   const [loading, setLoading] = useState(false);
@@ -21,11 +26,11 @@ export default function LimparReprocessarButton({ id, periodo }: Props) {
       const res = await fetch(`/api/faturamento/${id}`, { method: "DELETE" });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        setError(body.error ?? "Erro ao deletar. Tente novamente.");
+        setError(body.error ?? "Erro ao excluir. Tente novamente.");
         return;
       }
-      // Dados deletados → vai direto para o upload de novo faturamento
-      router.push("/faturamento/novo");
+      router.push("/faturamento");
+      router.refresh();
     } finally {
       setLoading(false);
     }
@@ -38,8 +43,8 @@ export default function LimparReprocessarButton({ id, periodo }: Props) {
         onClick={() => setOpen(true)}
         className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-red-600 dark:text-red-400 border border-red-200 dark:border-red-900/50 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/10 transition"
       >
-        <span className="material-symbols-outlined text-lg">refresh</span>
-        Limpar e Re-processar
+        <span className="material-symbols-outlined text-lg">delete</span>
+        Excluir
       </button>
 
       {/* Modal de confirmação */}
@@ -53,16 +58,15 @@ export default function LimparReprocessarButton({ id, periodo }: Props) {
 
           {/* Dialog */}
           <div className="relative bg-white dark:bg-[#0d1526] rounded-2xl shadow-xl border border-gray-100 dark:border-[#1e2d47] w-full max-w-md p-6">
-            {/* Ícone */}
             <div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center mb-4">
               <span className="material-symbols-outlined text-red-600 dark:text-red-400 text-2xl">warning</span>
             </div>
 
             <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-2">
-              Limpar e Re-processar?
+              Excluir faturamento?
             </h2>
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">
-              Todos os dados do faturamento abaixo serão <strong className="text-red-600 dark:text-red-400">permanentemente deletados</strong>:
+              Todos os dados do faturamento abaixo serão <strong className="text-red-600 dark:text-red-400">permanentemente excluídos</strong>:
             </p>
 
             {/* Período destacado */}
@@ -71,9 +75,9 @@ export default function LimparReprocessarButton({ id, periodo }: Props) {
               <p className="font-semibold text-gray-900 dark:text-white">{periodo}</p>
             </div>
 
-            {/* O que será deletado */}
+            {/* O que será excluído */}
             <ul className="text-xs text-gray-500 dark:text-gray-400 space-y-1 mb-4">
-              {["Pedidos (incluindo excluídos)", "Ordens de Pagamento", "Conciliações", "Divergências", "Arquivos de upload"].map(item => (
+              {["Pedidos (incluindo excluídos)", "Ordens de Pagamento", "Conciliações", "Divergências (inclusive resolvidas)", "Arquivos de upload"].map(item => (
                 <li key={item} className="flex items-center gap-2">
                   <span className="material-symbols-outlined text-red-400 text-sm">remove_circle</span>
                   {item}
@@ -82,7 +86,11 @@ export default function LimparReprocessarButton({ id, periodo }: Props) {
             </ul>
 
             <p className="text-xs text-gray-400 mb-5">
-              Após a limpeza, você será redirecionado para subir novas planilhas.
+              Para corrigir as planilhas mantendo este período, prefira{" "}
+              <Link href={`/faturamento/${id}/reprocessar`} className="text-primary-500 hover:underline font-medium">
+                Substituir planilhas
+              </Link>
+              . A exclusão fica registrada na trilha de auditoria.
             </p>
 
             {error && (
@@ -109,12 +117,12 @@ export default function LimparReprocessarButton({ id, periodo }: Props) {
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
                     </svg>
-                    Deletando…
+                    Excluindo…
                   </>
                 ) : (
                   <>
                     <span className="material-symbols-outlined text-lg">delete_forever</span>
-                    Confirmar Limpeza
+                    Excluir definitivamente
                   </>
                 )}
               </button>

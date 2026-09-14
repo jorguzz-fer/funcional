@@ -1,10 +1,13 @@
-import { PedidoInput } from "./types";
+import { AlertaPedido, PedidoInput } from "./types";
 import {
   normalizarCnpj,
   parsearData,
   parsearValor,
+  valorIlegivel,
+  textoCelula,
   normalizarTexto,
   encontrarColuna,
+  descreverCabecalhos,
 } from "./utils";
 
 interface FaturamentoRef {
@@ -35,7 +38,17 @@ const COLUMN_MAP = {
   // matching "Status_Ordem_Pagamento" instead of "Status_Pedido"
   statusVoucher: ["status pedido", "status do pedido", "status voucher", "status"],
   lote: ["lote"],
-  valorUnitario: ["valor unitario", "vlr.unitario", "vlr unitario", "valor liquido"],
+  // Valor do pedido / da ordem de pagamento. A ordem dos candidatos é a
+  // prioridade: nomes específicos primeiro, "valor" sozinho como último recurso
+  // (só é usado se nenhuma coluna mais específica existir).
+  valorUnitario: [
+    "valor unitario", "vlr unitario", "vlr.unitario",
+    "valor liquido", "vlr liquido",
+    "valor da ordem de pagamento", "valor ordem pagamento", "valor da ordem", "valor ordem",
+    "valor da op", "valor op", "vlr ordem", "vlr op",
+    "valor total", "vlr total", "valor pago", "valor autorizado",
+    "valor",
+  ],
   // "PO" is the purchase order code in the Clínicas e Labs export
   codigoOrdemPagamento: ["po", "cod. ordem pagamento", "cod ordem pagamento", "codigo da ordem", "codigo da ordem de pagamento", "codigo ordem"],
   statusOrdemPagamento: ["status da ordem", "status ordem pagamento", "status ordem"],
@@ -108,6 +121,19 @@ export function limparAutorizador(
   const headers = Object.keys(rows[0]);
   const col = resolveHeaders(headers);
 
+  // Colunas sem as quais a conciliação não faz sentido. Falhar aqui, com os
+  // cabeçalhos lidos, é melhor do que "processar com sucesso" uma planilha
+  // errada e gerar centenas de divergências de valor zero.
+  const faltando: string[] = [];
+  if (!col.voucher) faltando.push("voucher");
+  if (!col.valorUnitario) faltando.push("valor");
+  if (faltando.length > 0) {
+    throw new Error(
+      `Planilha do Autorizador sem coluna de ${faltando.join(" e ")} reconhecida. ` +
+        `Cabeçalhos lidos: ${descreverCabecalhos(headers)}`,
+    );
+  }
+
   const { dataInicio, dataFechamento } = faturamento;
 
   return rows.map((row): PedidoInput => {
@@ -128,7 +154,13 @@ export function limparAutorizador(
     const dataFinalizacaoVoucher = parsearData(getCell(row, col.dataFinalizacaoVoucher));
     const dataFaturamento = parsearData(getCell(row, col.dataFaturamento));
 
-    const valorUnitario = parsearValor(getCell(row, col.valorUnitario));
+    // Valor: a célula pode vir numérica ou como texto em formato "Geral"
+    // ("R$ 1.234,56", "1.234,56", "1234.56"...). Quando há conteúdo com
+    // dígitos que não pôde ser lido, guardamos o texto original para
+    // sinalizar ao usuário em vez de assumir zero silenciosamente.
+    const valorRaw = getCell(row, col.valorUnitario);
+    const valorUnitario = parsearValor(valorRaw);
+    const valorNaoReconhecido = valorUnitario === null && valorIlegivel(valorRaw);
 
     const cnpjClinica = normalizarCnpj(cnpjRaw != null ? String(cnpjRaw) : null);
 
@@ -154,6 +186,7 @@ export function limparAutorizador(
       statusVoucher: statusVoucher || null,
       lote,
       valorUnitario,
+      valorUnitarioBruto: valorNaoReconhecido ? textoCelula(valorRaw) : null,
       codigoOrdemPagamento,
       statusOrdemPagamento,
       cnpjClinica,
@@ -196,9 +229,12 @@ export function limparAutorizador(
     }
 
     // ─── Alerts (non-excluding) ────────────────────────────────────────────
-    const alertas: string[] = [];
+    const alertas: AlertaPedido[] = [];
     if (exigeLote(nomeExame) && !lote) {
       alertas.push("LOTE_AUSENTE");
+    }
+    if (valorNaoReconhecido) {
+      alertas.push("VALOR_NAO_RECONHECIDO");
     }
 
     return { ...baseFields, excluido: false, alertas };
