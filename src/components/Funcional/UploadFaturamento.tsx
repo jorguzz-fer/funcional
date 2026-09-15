@@ -11,6 +11,16 @@ interface FileState {
   proteus: File | null;
 }
 
+export interface FaturamentoExistente {
+  id: string;
+  /** YYYY-MM-DD */
+  dataInicio: string;
+  dataFim: string;
+  programa: string | null;
+  /** ISO */
+  criadoEm: string;
+}
+
 interface Props {
   /**
    * "novo" (default): cria um faturamento (POST /api/faturamento).
@@ -21,8 +31,12 @@ interface Props {
   faturamentoId?: string;
   /** Período pré-preenchido (YYYY-MM-DD), usado no modo reprocessar. */
   periodoInicial?: { dataInicio: string; dataFim: string };
+  /** Programa pré-preenchido (modo reprocessar). */
+  programaInicial?: string | null;
   /** Números do processamento atual, exibidos no aviso de substituição. */
   resumoAtual?: { pedidos: number; divergenciasResolvidas: number };
+  /** Faturamentos já registrados, para avisar sobreposição de período. */
+  existentes?: FaturamentoExistente[];
 }
 
 function defaultDataInicio(): string {
@@ -38,11 +52,15 @@ function defaultDataFim(): string {
   return d.toISOString().slice(0, 10);
 }
 
+const fmtData = (iso: string) => new Date(iso + "T12:00:00").toLocaleDateString("pt-BR");
+
 export default function UploadFaturamento({
   modo = "novo",
   faturamentoId,
   periodoInicial,
+  programaInicial,
   resumoAtual,
+  existentes = [],
 }: Props) {
   const router = useRouter();
   const reprocessar = modo === "reprocessar";
@@ -50,12 +68,21 @@ export default function UploadFaturamento({
   const [files, setFiles] = useState<FileState>({ autorizador: null, proteus: null });
   const [dataInicio, setDataInicio] = useState(periodoInicial?.dataInicio ?? defaultDataInicio());
   const [dataFim, setDataFim] = useState(periodoInicial?.dataFim ?? defaultDataFim());
+  const [programa, setPrograma] = useState(programaInicial ?? "");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  // Faturamento já existente para o período informado (resposta 409 da API)
-  const [conflito, setConflito] = useState<{ id: string } | null>(null);
   const autRef = useRef<HTMLInputElement>(null);
   const proRef = useRef<HTMLInputElement>(null);
+
+  // Faturamentos que sobrepõem o período escolhido (comparação de strings
+  // YYYY-MM-DD). Só informativo: vários faturamentos coexistem na mesma
+  // competência (PSP, DSP, Remi Card…).
+  const sobrepostos =
+    dataInicio && dataFim
+      ? existentes.filter(
+          (f) => f.id !== faturamentoId && f.dataInicio <= dataFim && f.dataFim >= dataInicio,
+        )
+      : [];
 
   function handleFileChange(slot: FileSlot, file: File | null) {
     setFiles((prev) => ({ ...prev, [slot]: file }));
@@ -76,7 +103,6 @@ export default function UploadFaturamento({
       return;
     }
     setError("");
-    setConflito(null);
     setLoading(true);
 
     try {
@@ -85,6 +111,7 @@ export default function UploadFaturamento({
       formData.append("proteus", files.proteus);
       formData.append("dataInicio", dataInicio);
       formData.append("dataFim", dataFim);
+      formData.append("programa", programa.trim());
 
       const endpoint = reprocessar
         ? `/api/faturamento/${faturamentoId}/reprocessar`
@@ -96,11 +123,8 @@ export default function UploadFaturamento({
       });
 
       if (!res.ok) {
-        const body: { error?: string; existingId?: string } = await res.json().catch(() => ({}));
+        const body: { error?: string } = await res.json().catch(() => ({}));
         setError(body.error ?? "Erro ao processar o upload.");
-        if (res.status === 409 && body.existingId) {
-          setConflito({ id: body.existingId });
-        }
         return;
       }
 
@@ -118,27 +142,7 @@ export default function UploadFaturamento({
       <form onSubmit={handleSubmit} className="space-y-6">
         {error && (
           <div className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 text-sm">
-            <p>{error}</p>
-            {conflito && (
-              <div className="flex flex-wrap gap-2 mt-3">
-                <Link
-                  href={`/faturamento/${conflito.id}`}
-                  className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg border border-red-300 dark:border-red-700 text-red-700 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/30 transition"
-                >
-                  <span className="material-symbols-outlined text-sm">open_in_new</span>
-                  Abrir faturamento existente
-                </Link>
-                {!reprocessar && (
-                  <Link
-                    href={`/faturamento/${conflito.id}/reprocessar`}
-                    className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-red-600 hover:bg-red-700 text-white transition"
-                  >
-                    <span className="material-symbols-outlined text-sm">sync</span>
-                    Substituir as planilhas do existente
-                  </Link>
-                )}
-              </div>
-            )}
+            {error}
           </div>
         )}
 
@@ -163,7 +167,7 @@ export default function UploadFaturamento({
           </div>
         )}
 
-        {/* Período */}
+        {/* Período + programa */}
         <div className="bg-white dark:bg-[#0d1526] rounded-2xl p-6 border border-gray-100 dark:border-[#1e2d47] shadow-sm">
           <h2 className="text-base font-semibold text-gray-900 dark:text-white mb-4">
             Período de Referência
@@ -197,15 +201,61 @@ export default function UploadFaturamento({
           {dataInicio && dataFim && (
             <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">
               Somente infusões realizadas entre{" "}
-              <span className="font-medium text-gray-600 dark:text-gray-300">
-                {new Date(dataInicio + "T12:00:00").toLocaleDateString("pt-BR")}
-              </span>{" "}
+              <span className="font-medium text-gray-600 dark:text-gray-300">{fmtData(dataInicio)}</span>{" "}
               e{" "}
-              <span className="font-medium text-gray-600 dark:text-gray-300">
-                {new Date(dataFim + "T12:00:00").toLocaleDateString("pt-BR")}
-              </span>{" "}
+              <span className="font-medium text-gray-600 dark:text-gray-300">{fmtData(dataFim)}</span>{" "}
               serão incluídas.
             </p>
+          )}
+
+          <div className="mt-4">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+              Programa / descrição{" "}
+              <span className="font-normal text-gray-400">(opcional)</span>
+            </label>
+            <input
+              type="text"
+              name="programa"
+              value={programa}
+              onChange={(e) => setPrograma(e.target.value)}
+              maxLength={80}
+              placeholder="Ex.: PSP, DSP, Remi Card"
+              className="w-full px-4 py-2.5 rounded-lg border border-gray-300 dark:border-[#2a3a5c] bg-white dark:bg-[#0a0e19] text-gray-900 dark:text-white text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500"
+            />
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1.5">
+              Identifica o faturamento quando há mais de um na mesma competência.
+            </p>
+          </div>
+
+          {/* Faturamentos já registrados no período (informativo, não bloqueia) */}
+          {sobrepostos.length > 0 && (
+            <div className="mt-4 p-3 rounded-lg bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800">
+              <p className="text-xs font-semibold text-blue-800 dark:text-blue-300 mb-1.5">
+                {sobrepostos.length === 1
+                  ? "Já existe 1 faturamento neste período"
+                  : `Já existem ${sobrepostos.length} faturamentos neste período`}
+                {" "}— este será registrado separadamente.
+              </p>
+              <ul className="space-y-1">
+                {sobrepostos.slice(0, 6).map((f) => (
+                  <li key={f.id} className="text-xs text-blue-700 dark:text-blue-300 flex flex-wrap items-center gap-x-2">
+                    <span className="font-medium">{f.programa ?? "Sem programa"}</span>
+                    <span className="text-blue-600/80 dark:text-blue-400/80">
+                      {fmtData(f.dataInicio)} a {fmtData(f.dataFim)} · criado em{" "}
+                      {new Date(f.criadoEm).toLocaleDateString("pt-BR")}
+                    </span>
+                    <Link href={`/faturamento/${f.id}`} className="underline hover:no-underline">
+                      abrir
+                    </Link>
+                  </li>
+                ))}
+                {sobrepostos.length > 6 && (
+                  <li className="text-xs text-blue-600/80 dark:text-blue-400/80">
+                    +{sobrepostos.length - 6} outro{sobrepostos.length - 6 !== 1 ? "s" : ""}
+                  </li>
+                )}
+              </ul>
+            </div>
           )}
         </div>
 

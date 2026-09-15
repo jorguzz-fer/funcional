@@ -182,6 +182,74 @@ export function textoCelula(raw: unknown): string {
 }
 
 /**
+ * Normaliza um número de nota fiscal para comparação entre Autorizador e
+ * Proteus. As duas bases exportam a mesma NF de formas diferentes
+ * ("000123", "NF-123", 123 numérico, "123.456"), então a chave usa apenas os
+ * dígitos, sem zeros à esquerda. Sem dígitos, cai para o texto alfanumérico
+ * em minúsculas. Vazio quando a célula está em branco.
+ *
+ * Limitação conhecida: série/sufixo ("123-1") entra na chave ("1231"); se um
+ * lado omitir a série, as chaves não batem.
+ */
+export function normalizarNF(raw: unknown): string {
+  if (raw == null) return "";
+  if (typeof raw === "number") {
+    return Number.isFinite(raw) ? String(Math.trunc(Math.abs(raw))) : "";
+  }
+  const s = String(raw).trim();
+  if (s === "") return "";
+  const digitos = s.replace(/\D/g, "");
+  if (digitos) return digitos.replace(/^0+/, "") || "0";
+  return normalizarTexto(s).replace(/[^a-z0-9]/g, "");
+}
+
+/**
+ * Chave de identificação do emissor para desambiguar notas fiscais de mesmo
+ * número entre parceiros diferentes: a RAIZ do CNPJ (8 primeiros dígitos), de
+ * modo que matriz e filiais de um mesmo parceiro sejam tratadas como o mesmo
+ * emissor. Para CPF (11 dígitos) usa o número inteiro. Vazio quando não há
+ * documento.
+ */
+export function chaveEmissor(raw: string | null | undefined): string {
+  if (!raw) return "";
+  const digitos = String(raw).replace(/\D/g, "");
+  if (digitos.length === 14) return digitos.slice(0, 8);
+  return digitos;
+}
+
+/** Formata um valor em reais para mensagens exibidas ao usuário. */
+export function formatarBRL(v: number): string {
+  return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+/**
+ * Relatórios exportados do Excel costumam trazer a NF (ou o CNPJ) numa célula
+ * MESCLADA que cobre várias linhas de itens; ao converter para JSON, só a
+ * primeira linha recebe o valor e as demais ficam em branco — o que separa os
+ * itens da mesma nota. Esta função copia o valor da célula superior esquerda
+ * de cada região mesclada para todas as células da região, antes da leitura.
+ */
+export function preencherCelulasMescladas(ws: XLSX.WorkSheet): number {
+  const merges = ws["!merges"] ?? [];
+  let preenchidas = 0;
+  for (const m of merges) {
+    const origem = ws[XLSX.utils.encode_cell(m.s)];
+    if (!origem || origem.v == null || origem.v === "") continue;
+    for (let r = m.s.r; r <= m.e.r; r++) {
+      for (let c = m.s.c; c <= m.e.c; c++) {
+        if (r === m.s.r && c === m.s.c) continue;
+        const addr = XLSX.utils.encode_cell({ r, c });
+        const atual = ws[addr];
+        if (atual && atual.v != null && atual.v !== "") continue;
+        ws[addr] = { t: origem.t, v: origem.v, w: origem.w };
+        preenchidas++;
+      }
+    }
+  }
+  return preenchidas;
+}
+
+/**
  * Normalizes text for tolerant column-name matching:
  * trim + lowercase + remove accents.
  */
@@ -218,6 +286,7 @@ export function detectarLinhaHeader(ws: XLSX.WorkSheet): number {
  */
 export function normalizarCabecalho(raw: unknown): string {
   return normalizarTexto(raw)
+    .replace(/[ºª°]/g, "") // "Nº Pedido" → "n pedido"
     .replace(/[.\-/:;()]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();

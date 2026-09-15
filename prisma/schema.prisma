@@ -86,6 +86,10 @@ model Faturamento {
   id               String           @id @default(cuid())
   dataInicio       DateTime
   dataFechamento   DateTime
+  // Rótulo que distingue faturamentos da mesma competência (PSP, DSP, Remi
+  // Card…). A operação registra vários faturamentos por período, de forma
+  // independente — por isso NÃO há unicidade por (dataInicio, dataFechamento).
+  programa         String?
   status           StatusFaturamento @default(RASCUNHO)
   observacoes      String?
   createdAt        DateTime         @default(now())
@@ -97,7 +101,8 @@ model Faturamento {
   divergencias     Divergencia[]
   uploads          UploadArquivo[]
 
-  @@unique([dataInicio, dataFechamento])
+  @@index([dataInicio, dataFechamento])
+  @@index([createdAt])
 }
 
 enum StatusFaturamento {
@@ -142,7 +147,12 @@ model Pedido {
   // Campos do Autorizador
   voucher               String
   articulacaoId         String?
+  codigoPedido          String?        // "Pedido ID" do Autorizador — identificador reconhecido pela operação
   codigoPaciente        String         // BR-A ou DSP (nunca nome/CPF direto — LGPD)
+  // CNPJ/nome de faturamento informados na planilha. Guardados no pedido para a
+  // conciliação não depender de a clínica estar cadastrada (clinicaId).
+  cnpjClinica           String?
+  nomeClinica           String?
   nomeExame             String?
   medicamentoId         String?
   servico               String?
@@ -178,6 +188,7 @@ model Pedido {
 
   @@index([faturamentoId])
   @@index([voucher])
+  @@index([codigoPedido])
   @@index([codigoPaciente])
   @@index([clinicaId])
 }
