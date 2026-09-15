@@ -47,8 +47,8 @@ export default async function DashboardPage({ searchParams }: Props) {
       ...(from ? { dataInicio: { gte: from } } : {}),
       ...(to   ? { dataFechamento: { lte: to } } : {}),
     },
-    orderBy: { dataInicio: "desc" },
-    select: { id: true, dataInicio: true, dataFechamento: true, status: true },
+    orderBy: [{ dataInicio: "desc" }, { createdAt: "desc" }],
+    select: { id: true, dataInicio: true, dataFechamento: true, programa: true, status: true },
   });
 
   const ids = faturamentos.map((f) => f.id);
@@ -166,6 +166,7 @@ export default async function DashboardPage({ searchParams }: Props) {
             <thead>
               <tr className="border-b border-gray-100 dark:border-[#1e2d47]">
                 <th className="px-6 py-3 text-left font-semibold text-gray-500 dark:text-gray-400">Período</th>
+                <th className="px-6 py-3 text-left font-semibold text-gray-500 dark:text-gray-400">Programa</th>
                 <th className="px-6 py-3 text-center font-semibold text-gray-500 dark:text-gray-400">Status</th>
                 <th className="px-6 py-3 text-right font-semibold text-gray-500 dark:text-gray-400">Ação</th>
               </tr>
@@ -177,6 +178,9 @@ export default async function DashboardPage({ searchParams }: Props) {
                   <tr key={f.id} className="border-b border-gray-50 dark:border-[#1a2540] hover:bg-gray-50 dark:hover:bg-[#0f1c35] transition">
                     <td className="px-6 py-3 text-gray-800 dark:text-gray-200">
                       {fmt(f.dataInicio)} — {fmt(f.dataFechamento)}
+                    </td>
+                    <td className="px-6 py-3 text-gray-600 dark:text-gray-300">
+                      {f.programa ?? <span className="text-gray-400">—</span>}
                     </td>
                     <td className="px-6 py-3 text-center">
                       <span className={`text-xs font-medium px-2.5 py-0.5 rounded-full ${statusColor[f.status] ?? ""}`}>

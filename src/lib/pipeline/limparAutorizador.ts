@@ -57,6 +57,13 @@ const COLUMN_MAP = {
   nomeClinica: ["nome da clinica utilizacao", "nome da clinica", "nome fantasia", "clinica"],
   numeroNotaFiscal: ["numero da nota fiscal", "numero nota fiscal", "nota fiscal", "nf"],
   articulacaoId: ["articulacao", "articulacao id", "id articulacao", "id pedido"],
+  // "Pedido ID": identificador do pedido que a operação reconhece — é ele que
+  // aparece nas divergências (nunca o id interno do banco).
+  codigoPedido: [
+    "pedido id", "id do pedido", "id pedido", "numero do pedido", "numero pedido",
+    "n do pedido", "n pedido", "num do pedido", "num pedido",
+    "codigo do pedido", "codigo pedido", "cod pedido",
+  ],
   dsp: ["dsp/psp", "dsp", "diagnostico"],
 } as const;
 
@@ -80,6 +87,19 @@ function resolveHeaders(headers: string[]): Partial<Record<FieldKey, string>> {
 function getCell(row: Record<string, unknown>, header: string | undefined): unknown {
   if (!header) return undefined;
   return row[header];
+}
+
+/**
+ * Identificadores numéricos (Pedido ID) chegam como número quando a célula é
+ * numérica; evita "12345.0"/notação científica e mantém o texto quando for texto.
+ */
+function textoIdentificador(raw: unknown): string | null {
+  if (raw == null) return null;
+  if (typeof raw === "number") {
+    return Number.isFinite(raw) ? String(Math.trunc(raw)) : null;
+  }
+  const s = String(raw).trim();
+  return s || null;
 }
 
 /**
@@ -147,6 +167,7 @@ export function limparAutorizador(
     const statusOrdemPagamento = String(getCell(row, col.statusOrdemPagamento) ?? "").trim() || null;
     const numeroNotaFiscal = String(getCell(row, col.numeroNotaFiscal) ?? "").trim() || null;
     const articulacaoId = String(getCell(row, col.articulacaoId) ?? "").trim() || null;
+    const codigoPedido = textoIdentificador(getCell(row, col.codigoPedido));
     const dsp = String(getCell(row, col.dsp) ?? "").trim() || null;
     const nomeClinica = String(getCell(row, col.nomeClinica) ?? "").trim() || null;
 
@@ -193,6 +214,7 @@ export function limparAutorizador(
       nomeClinica,
       numeroNotaFiscal,
       articulacaoId,
+      codigoPedido,
       dsp,
       tipo,
     };

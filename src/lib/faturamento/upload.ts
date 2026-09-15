@@ -43,7 +43,11 @@ export interface UploadValidado {
   proteusFile: File;
   dataInicio: Date;
   dataFechamento: Date;
+  /** Rótulo que distingue faturamentos da mesma competência (PSP, DSP…); null se não informado. */
+  programa: string | null;
 }
+
+const PROGRAMA_MAX = 80;
 
 /**
  * Valida os campos do multipart (duas planilhas + período).
@@ -92,7 +96,11 @@ export function validarUploadFaturamento(
     return bad("Arquivo proteus excede o limite de 50MB");
   }
 
-  return { dados: { autorizadorFile, proteusFile, dataInicio, dataFechamento } };
+  const programaRaw = formData.get("programa");
+  const programa =
+    typeof programaRaw === "string" ? programaRaw.trim().slice(0, PROGRAMA_MAX) || null : null;
+
+  return { dados: { autorizadorFile, proteusFile, dataInicio, dataFechamento, programa } };
 }
 
 export interface ArquivoLido {

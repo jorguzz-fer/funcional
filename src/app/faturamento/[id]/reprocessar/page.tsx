@@ -18,26 +18,34 @@ export default async function ReprocessarFaturamentoPage({ params }: Props) {
   const role = (session.user as { role?: string }).role as Role | undefined;
   if (!role || !ROLES_WRITE.includes(role)) redirect(`/faturamento/${id}`);
 
-  const faturamento = await prisma.faturamento.findUnique({
-    where: { id },
-    select: {
-      id: true,
-      dataInicio: true,
-      dataFechamento: true,
-      status: true,
-      _count: {
-        select: {
-          pedidos: true,
-          divergencias: { where: { resolvido: true } },
+  const [faturamento, existentes] = await Promise.all([
+    prisma.faturamento.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        dataInicio: true,
+        dataFechamento: true,
+        programa: true,
+        status: true,
+        _count: {
+          select: {
+            pedidos: true,
+            divergencias: { where: { resolvido: true } },
+          },
         },
       },
-    },
-  });
+    }),
+    prisma.faturamento.findMany({
+      orderBy: { createdAt: "desc" },
+      select: { id: true, dataInicio: true, dataFechamento: true, programa: true, createdAt: true },
+    }),
+  ]);
 
   if (!faturamento) notFound();
 
   const fmt = (d: Date) => d.toLocaleDateString("pt-BR");
   const periodo = `${fmt(faturamento.dataInicio)} — ${fmt(faturamento.dataFechamento)}`;
+  const titulo = `${faturamento.programa ? `${faturamento.programa} — ` : ""}${periodo}`;
   // Datas são gravadas ao meio-dia UTC → o recorte ISO devolve o dia certo
   const toInput = (d: Date) => d.toISOString().slice(0, 10);
 
@@ -52,12 +60,12 @@ export default async function ReprocessarFaturamentoPage({ params }: Props) {
             <span className="material-symbols-outlined text-xl">arrow_back</span>
           </Link>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-            Substituir planilhas — {periodo}
+            Substituir planilhas — {titulo}
           </h1>
         </div>
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 ml-8">
           Suba as planilhas corrigidas do Autorizador e do Proteus. A conciliação será refeita do zero,
-          mantendo o mesmo faturamento. O período também pode ser ajustado.
+          mantendo o mesmo faturamento. O período e o programa também podem ser ajustados.
         </p>
       </div>
 
@@ -68,10 +76,18 @@ export default async function ReprocessarFaturamentoPage({ params }: Props) {
           dataInicio: toInput(faturamento.dataInicio),
           dataFim: toInput(faturamento.dataFechamento),
         }}
+        programaInicial={faturamento.programa}
         resumoAtual={{
           pedidos: faturamento._count.pedidos,
           divergenciasResolvidas: faturamento._count.divergencias,
         }}
+        existentes={existentes.map((f) => ({
+          id: f.id,
+          dataInicio: toInput(f.dataInicio),
+          dataFim: toInput(f.dataFechamento),
+          programa: f.programa,
+          criadoEm: f.createdAt.toISOString(),
+        }))}
       />
     </div>
   );

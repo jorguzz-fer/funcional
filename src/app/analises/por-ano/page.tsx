@@ -11,7 +11,7 @@ export default async function PorAnoPage() {
   if (!session) redirect("/login");
 
   const faturamentos = await prisma.faturamento.findMany({
-    orderBy: { dataInicio: "asc" },
+    orderBy: [{ dataInicio: "asc" }, { createdAt: "asc" }],
     include: {
       _count: {
         select: {
@@ -87,6 +87,7 @@ export default async function PorAnoPage() {
                   <thead>
                     <tr className="border-b border-gray-50 dark:border-[#1a2540]">
                       <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400">Período</th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400">Programa</th>
                       <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400">Status</th>
                       <th className="px-6 py-3 text-center text-xs font-semibold text-gray-500 dark:text-gray-400">Pedidos Válidos</th>
                       <th className="px-6 py-3 text-center text-xs font-semibold text-gray-500 dark:text-gray-400">Divergências</th>
@@ -112,6 +113,9 @@ export default async function PorAnoPage() {
                         <tr key={fat.id} className="border-b border-gray-50 dark:border-[#1a2540] hover:bg-gray-50 dark:hover:bg-[#0f1c35] transition">
                           <td className="px-6 py-3 font-medium text-gray-900 dark:text-white">
                             {fmtD(fat.dataInicio)} — {fmtD(fat.dataFechamento)}
+                          </td>
+                          <td className="px-6 py-3 text-gray-600 dark:text-gray-300">
+                            {fat.programa ?? <span className="text-gray-400">—</span>}
                           </td>
                           <td className="px-6 py-3">
                             <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${statusColor[fat.status] ?? ""}`}>

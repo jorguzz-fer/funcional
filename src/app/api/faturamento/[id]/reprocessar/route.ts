@@ -39,6 +39,7 @@ export async function POST(req: NextRequest, { params }: Params): Promise<NextRe
       id: true,
       dataInicio: true,
       dataFechamento: true,
+      programa: true,
       status: true,
       updatedAt: true,
       uploads: { select: { erros: true } },
@@ -68,23 +69,10 @@ export async function POST(req: NextRequest, { params }: Params): Promise<NextRe
 
   const validacao = validarUploadFaturamento(formData);
   if (validacao.error) return validacao.error;
-  const { autorizadorFile, proteusFile, dataInicio, dataFechamento } = validacao.dados;
+  const { autorizadorFile, proteusFile, dataInicio, dataFechamento, programa } = validacao.dados;
 
-  // O período pode ser ajustado, mas não pode colidir com OUTRO faturamento
-  const conflito = await prisma.faturamento.findFirst({
-    where: { dataInicio, dataFechamento, id: { not: id } },
-    select: { id: true },
-  });
-  if (conflito) {
-    const fmt = (d: Date) => d.toLocaleDateString("pt-BR");
-    return NextResponse.json(
-      {
-        error: `Já existe outro faturamento registrado para o período ${fmt(dataInicio)} — ${fmt(dataFechamento)}`,
-        existingId: conflito.id,
-      },
-      { status: 409 },
-    );
-  }
+  // O período e o programa podem ser ajustados livremente: vários
+  // faturamentos coexistem na mesma competência.
 
   // Lê os arquivos ANTES de descartar qualquer coisa: se a leitura falhar,
   // o faturamento atual permanece intacto.
@@ -105,7 +93,7 @@ export async function POST(req: NextRequest, { params }: Params): Promise<NextRe
     prisma.uploadArquivo.deleteMany({ where: { faturamentoId: id } }),
     prisma.faturamento.update({
       where: { id },
-      data: { dataInicio, dataFechamento, status: "RASCUNHO" },
+      data: { dataInicio, dataFechamento, programa, status: "RASCUNHO" },
     }),
     prisma.uploadArquivo.createMany({ data: registrosUpload(id, arquivos) }),
   ]);
@@ -123,8 +111,10 @@ export async function POST(req: NextRequest, { params }: Params): Promise<NextRe
         dataFechamento: faturamento.dataFechamento.toISOString(),
       },
       statusAnterior: faturamento.status,
+      programaAnterior: faturamento.programa,
       dataInicio: dataInicio.toISOString(),
       dataFechamento: dataFechamento.toISOString(),
+      programa,
       autorizador: autorizadorFile.name,
       proteus: proteusFile.name,
     },

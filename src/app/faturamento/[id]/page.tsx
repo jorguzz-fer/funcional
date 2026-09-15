@@ -69,43 +69,82 @@ export default async function FaturamentoDetailPage({ params, searchParams }: Pr
   const processando =
     !erroUpload && (faturamento.status === "RASCUNHO" || faturamento.status === "EM_REVISAO");
 
-  // Counts for summary cards
-  const [totalPedidos, pedidosValidos, pedidosExcluidos, divergenciasPendentes, aguardandoNF, valorTotal] =
-    await Promise.all([
-      prisma.pedido.count({ where: { faturamentoId: id } }),
-      prisma.pedido.count({ where: { faturamentoId: id, excluido: false } }),
-      prisma.pedido.count({ where: { faturamentoId: id, excluido: true } }),
-      prisma.divergencia.count({ where: { faturamentoId: id, resolvido: false } }),
-      // Pedidos com ordem de pagamento mas ainda sem NF: não conciliáveis com o
-      // Proteus por enquanto (não é divergência — a OP só existe no Autorizador)
-      prisma.conciliacao.count({ where: { faturamentoId: id, status: "PENDENTE" } }),
-      // Sum from Proteus (OrdemPagamento) — this is the actual billing amount
-      prisma.ordemPagamento.aggregate({
-        where: { faturamentoId: id },
-        _sum: { valorTotal: true },
-      }),
-    ]);
+  // Soma de valorUnitario dos pedidos válidos, opcionalmente por status de conciliação
+  const somaPedidos = (status?: "OK" | "ATENCAO" | "PENDENTE") =>
+    prisma.pedido.aggregate({
+      where: { faturamentoId: id, excluido: false, ...(status ? { conciliacao: { status } } : {}) },
+      _sum: { valorUnitario: true },
+    });
+
+  // Counts and values for summary cards
+  const [
+    totalPedidos,
+    pedidosValidos,
+    pedidosExcluidos,
+    divergenciasPendentes,
+    aguardandoNF,
+    valorTotal,
+    somaAutorizador,
+    somaOk,
+    somaAtencao,
+    somaPendente,
+  ] = await Promise.all([
+    prisma.pedido.count({ where: { faturamentoId: id } }),
+    prisma.pedido.count({ where: { faturamentoId: id, excluido: false } }),
+    prisma.pedido.count({ where: { faturamentoId: id, excluido: true } }),
+    prisma.divergencia.count({ where: { faturamentoId: id, resolvido: false } }),
+    // Pedidos com ordem de pagamento mas ainda sem NF: não conciliáveis com o
+    // Proteus por enquanto (não é divergência — a OP só existe no Autorizador)
+    prisma.conciliacao.count({ where: { faturamentoId: id, status: "PENDENTE" } }),
+    // Sum from Proteus (OrdemPagamento) — this is the actual billing amount
+    prisma.ordemPagamento.aggregate({
+      where: { faturamentoId: id },
+      _sum: { valorTotal: true },
+    }),
+    somaPedidos(),
+    somaPedidos("OK"),
+    somaPedidos("ATENCAO"),
+    somaPedidos("PENDENTE"),
+  ]);
 
   const valorTotalNum = Number(valorTotal._sum.valorTotal ?? 0);
+  const valores = {
+    autorizador: Number(somaAutorizador._sum.valorUnitario ?? 0),
+    proteus: valorTotalNum,
+    ok: Number(somaOk._sum.valorUnitario ?? 0),
+    atencao: Number(somaAtencao._sum.valorUnitario ?? 0),
+    pendente: Number(somaPendente._sum.valorUnitario ?? 0),
+  };
+  const fmtBRL = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
   // Build pedidos filters
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const where: Record<string, any> = {
     faturamentoId: id,
   };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const condicoes: Record<string, any>[] = [];
   if (sp.statusVoucher && sp.statusVoucher !== "todos") {
     where.statusVoucher = sp.statusVoucher as "CONSULTADO" | "FINALIZADO" | "GLOSADO";
   }
   if (sp.excluidos === "sim") where.excluido = true;
   else if (sp.excluidos === "nao") where.excluido = false;
   if (sp.busca) {
-    where.voucher = { contains: sp.busca, mode: "insensitive" };
+    // Pedido ID (identificador da operação), voucher ou número da NF
+    condicoes.push({
+      OR: [
+        { codigoPedido: { contains: sp.busca, mode: "insensitive" } },
+        { voucher: { contains: sp.busca, mode: "insensitive" } },
+        { numeroNotaFiscal: { contains: sp.busca, mode: "insensitive" } },
+      ],
+    });
   }
   if (sp.categoria === "grandes") {
     where.clinica = { grandeRede: true };
   } else if (sp.categoria === "convencionais") {
-    where.OR = [{ clinica: { grandeRede: false } }, { clinica: null }];
+    condicoes.push({ OR: [{ clinica: { grandeRede: false } }, { clinica: null }] });
   }
+  if (condicoes.length > 0) where.AND = condicoes;
 
   const [pedidos, totalRows] = await Promise.all([
     prisma.pedido.findMany({
@@ -180,7 +219,7 @@ export default async function FaturamentoDetailPage({ params, searchParams }: Pr
               <span className="material-symbols-outlined text-xl">arrow_back</span>
             </Link>
             <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-              Faturamento — {periodo}
+              Faturamento{faturamento.programa ? ` ${faturamento.programa}` : ""} — {periodo}
             </h1>
             <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${STATUS_BADGE[faturamento.status] ?? ""}`}>
               {STATUS_LABEL[faturamento.status] ?? faturamento.status}
@@ -188,6 +227,15 @@ export default async function FaturamentoDetailPage({ params, searchParams }: Pr
           </div>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 ml-8">
             Fechamento em {faturamento.dataFechamento.toLocaleDateString("pt-BR")}
+            {" · "}Criado em{" "}
+            {faturamento.createdAt.toLocaleString("pt-BR", {
+              day: "2-digit",
+              month: "2-digit",
+              year: "numeric",
+              hour: "2-digit",
+              minute: "2-digit",
+              timeZone: "America/Sao_Paulo",
+            })}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
@@ -215,7 +263,7 @@ export default async function FaturamentoDetailPage({ params, searchParams }: Pr
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-4 mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-4 mb-4">
         <div className="bg-white dark:bg-[#0d1526] rounded-2xl p-4 border border-gray-100 dark:border-[#1e2d47] shadow-sm">
           <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Total de Pedidos</p>
           <p className="text-2xl font-bold text-gray-900 dark:text-white">{totalPedidos}</p>
@@ -241,11 +289,46 @@ export default async function FaturamentoDetailPage({ params, searchParams }: Pr
           <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Aguardando NF</p>
           <p className="text-2xl font-bold text-amber-600 dark:text-amber-400">{aguardandoNF}</p>
         </div>
-        <div className="bg-white dark:bg-[#0d1526] rounded-2xl p-4 border border-gray-100 dark:border-[#1e2d47] shadow-sm">
-          <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Valor Total</p>
-          <p className="text-xl font-bold text-gray-900 dark:text-white">
-            {valorTotalNum.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+      </div>
+
+      {/* Valores — para conferência com o total de referência da operação */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-4 mb-6">
+        <div
+          className="bg-white dark:bg-[#0d1526] rounded-2xl p-4 border border-gray-100 dark:border-[#1e2d47] shadow-sm"
+          title="Soma dos valores dos pedidos válidos (não excluídos) do Autorizador"
+        >
+          <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Total Autorizador</p>
+          <p className="text-lg font-bold text-gray-900 dark:text-white">{fmtBRL(valores.autorizador)}</p>
+        </div>
+        <div
+          className="bg-white dark:bg-[#0d1526] rounded-2xl p-4 border border-gray-100 dark:border-[#1e2d47] shadow-sm"
+          title="Soma das ordens de pagamento do Proteus"
+        >
+          <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Total Proteus</p>
+          <p className="text-lg font-bold text-gray-900 dark:text-white">{fmtBRL(valores.proteus)}</p>
+        </div>
+        <div
+          className="bg-white dark:bg-[#0d1526] rounded-2xl p-4 border border-gray-100 dark:border-[#1e2d47] shadow-sm"
+          title="Pedidos cuja nota fiscal bateu com o Proteus sem divergência"
+        >
+          <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Conciliado (OK)</p>
+          <p className="text-lg font-bold text-green-600 dark:text-green-400">{fmtBRL(valores.ok)}</p>
+        </div>
+        <div
+          className="bg-white dark:bg-[#0d1526] rounded-2xl p-4 border border-gray-100 dark:border-[#1e2d47] shadow-sm"
+          title="Pedidos com alguma divergência (valor, NF não encontrada, CNPJ)"
+        >
+          <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Em atenção</p>
+          <p className={`text-lg font-bold ${valores.atencao > 0 ? "text-red-600 dark:text-red-400" : "text-gray-900 dark:text-white"}`}>
+            {fmtBRL(valores.atencao)}
           </p>
+        </div>
+        <div
+          className="bg-white dark:bg-[#0d1526] rounded-2xl p-4 border border-gray-100 dark:border-[#1e2d47] shadow-sm"
+          title="Pedidos com ordem de pagamento mas ainda sem nota fiscal"
+        >
+          <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Aguardando NF</p>
+          <p className="text-lg font-bold text-amber-600 dark:text-amber-400">{fmtBRL(valores.pendente)}</p>
         </div>
       </div>
 
@@ -296,7 +379,7 @@ export default async function FaturamentoDetailPage({ params, searchParams }: Pr
             <input
               name="busca"
               defaultValue={sp.busca ?? ""}
-              placeholder="Buscar voucher..."
+              placeholder="Buscar Pedido ID, voucher ou NF..."
               className="flex-1 min-w-[180px] text-sm px-3 py-2 rounded-lg border border-gray-200 dark:border-[#2a3a5c] bg-white dark:bg-[#0a1220] text-gray-800 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-400"
             />
             <select

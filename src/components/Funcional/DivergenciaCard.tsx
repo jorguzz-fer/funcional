@@ -27,6 +27,32 @@ const TIPO_COLOR: Record<string, string> = {
   OUTRO:                   "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400",
 };
 
+/**
+ * Rótulos das chaves do detalhe. Chaves iniciadas por "_" (ids internos para
+ * rastreabilidade) e ids técnicos de versões antigas nunca são exibidos: a
+ * operação reconhece Pedido ID, voucher, NF e clínica — não cuids.
+ */
+const DETALHE_LABEL: Record<string, string> = {
+  pedido:           "Pedido ID",
+  pedidos:          "Pedidos",
+  qtdPedidos:       "Qtd. pedidos",
+  voucher:          "Voucher",
+  nf:               "NF",
+  numeroNotaFiscal: "NF",
+  ordem:            "Ordem de pagamento",
+  codigoOrdem:      "Ordem de pagamento",
+  clinica:          "Clínica",
+  cnpj:             "CNPJ",
+  cnpjAutorizador:  "CNPJ Autorizador",
+  cnpjProteus:      "CNPJ Proteus",
+  linhasProteus:    "Linhas no Proteus",
+  linha:            "Linha da planilha",
+  origem:           "Origem",
+  valorBruto:       "Valor lido",
+};
+
+const DETALHE_OCULTO = new Set(["pedidoId", "ordemId", "matchKey", "matchType"]);
+
 interface DivergenciaData {
   id: string;
   tipo: string;
@@ -182,17 +208,19 @@ export default function DivergenciaCard({ divergencia, faturamentoId }: Props) {
               </div>
             )}
 
-            {/* Extra detalhe */}
-            {divergencia.detalhe && Object.keys(divergencia.detalhe).length > 0 && (
+            {/* Extra detalhe — só chaves que a operação reconhece */}
+            {divergencia.detalhe && (
               <div className="mt-3 flex flex-wrap gap-3">
-                {Object.entries(divergencia.detalhe).map(([k, v]) => (
-                  <div key={k} className="text-xs">
-                    <span className="text-gray-400 capitalize">{k}: </span>
-                    <span className="text-gray-700 dark:text-gray-300 font-medium">
-                      {String(v)}
-                    </span>
-                  </div>
-                ))}
+                {Object.entries(divergencia.detalhe)
+                  .filter(([k, v]) => !k.startsWith("_") && !DETALHE_OCULTO.has(k) && v != null && v !== "")
+                  .map(([k, v]) => (
+                    <div key={k} className="text-xs">
+                      <span className="text-gray-400">{DETALHE_LABEL[k] ?? k}: </span>
+                      <span className="text-gray-700 dark:text-gray-300 font-medium">
+                        {Array.isArray(v) ? v.join(", ") : String(v)}
+                      </span>
+                    </div>
+                  ))}
               </div>
             )}
 

@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import { limparAutorizador } from "./limparAutorizador";
 import { limparProteus } from "./limparProteus";
 import { executarConciliacao } from "./conciliar";
-import { detectarLinhaHeader } from "./utils";
+import { detectarLinhaHeader, preencherCelulasMescladas } from "./utils";
 import { PedidoInput } from "./types";
 
 interface FileBuffers {
@@ -51,6 +51,9 @@ export async function processarFaturamento(
     // 3. Parse AUTORIZADOR xlsx from in-memory buffer (no disk read)
     const wbAut = XLSX.read(buffers.autorizador, { type: "buffer" });
     const wsAut = wbAut.Sheets[wbAut.SheetNames[0]];
+    // Células mescladas (NF/CNPJ cobrindo várias linhas de itens) só têm valor
+    // na primeira linha; replica para as demais antes de converter em linhas.
+    const mescladasAut = preencherCelulasMescladas(wsAut);
     const headerRowAut = detectarLinhaHeader(wsAut);
     const rowsAut: Record<string, unknown>[] = XLSX.utils.sheet_to_json(wsAut, {
       defval: "",
@@ -64,7 +67,13 @@ export async function processarFaturamento(
       wbPro.SheetNames.find((s) => !METADATA_SHEETS.includes(s.toLowerCase())) ??
       wbPro.SheetNames[wbPro.SheetNames.length - 1];
     const wsPro = wbPro.Sheets[dataSheetName];
+    const mescladasPro = preencherCelulasMescladas(wsPro);
     const headerRowPro = detectarLinhaHeader(wsPro);
+    if (mescladasAut > 0 || mescladasPro > 0) {
+      console.log(
+        `[pipeline] Células mescladas preenchidas — Autorizador: ${mescladasAut}, Proteus: ${mescladasPro}`,
+      );
+    }
     const rowsPro: Record<string, unknown>[] = XLSX.utils.sheet_to_json(wsPro, {
       defval: "",
       range: headerRowPro,
@@ -105,9 +114,14 @@ export async function processarFaturamento(
       }
     }
 
+    // Cadastro de clínicas por CNPJ (uma consulta) — usado para vincular
+    // pedidos E ordens à clínica quando ela estiver cadastrada.
+    const clinicas = await prisma.clinica.findMany({ select: { id: true, cnpj: true } });
+    const clinicaPorCnpj = new Map(clinicas.map((c) => [c.cnpj, c.id]));
+
     // 6 & 7. Persist Pedidos (upsert por voucher + articulacaoId)
     for (const p of pedidosInput) {
-      await salvarPedido(faturamentoId, p);
+      await salvarPedido(faturamentoId, p, clinicaPorCnpj);
     }
 
     // 8. Persist OrdemPagamento
@@ -115,6 +129,7 @@ export async function processarFaturamento(
       await prisma.ordemPagamento.create({
         data: {
           faturamentoId,
+          clinicaId: (o.cnpj && clinicaPorCnpj.get(o.cnpj)) || null,
           codigoOrdem: o.codigoOrdem ?? null,
           numeroNotaFiscal: o.numeroNotaFiscal ?? null,
           valorTotal: o.valorTotal ?? null,
@@ -213,16 +228,15 @@ export async function processarFaturamento(
  * Upserts a Pedido by (faturamentoId, voucher, articulacaoId).
  * Attempts to resolve the Clinica from the cnpj in the input, if present.
  */
-async function salvarPedido(faturamentoId: string, p: PedidoInput): Promise<void> {
-  // Resolve clinicaId from CNPJ (best-effort)
-  let clinicaId: string | null = null;
-  if (p.cnpjClinica) {
-    const clinica = await prisma.clinica.findUnique({
-      where: { cnpj: p.cnpjClinica },
-      select: { id: true },
-    });
-    clinicaId = clinica?.id ?? null;
-  }
+async function salvarPedido(
+  faturamentoId: string,
+  p: PedidoInput,
+  clinicaPorCnpj: Map<string, string>,
+): Promise<void> {
+  // Resolve clinicaId from CNPJ (best-effort). O CNPJ/nome da planilha são
+  // gravados no pedido de qualquer forma: a conciliação por NF + emissor não
+  // depende de a clínica estar cadastrada.
+  const clinicaId = (p.cnpjClinica && clinicaPorCnpj.get(p.cnpjClinica)) || null;
 
   const statusVoucher = resolveStatusVoucher(p.statusVoucher);
   const statusOrdemPagamento = resolveStatusOrdem(p.statusOrdemPagamento);
@@ -233,6 +247,9 @@ async function salvarPedido(faturamentoId: string, p: PedidoInput): Promise<void
     clinicaId,
     voucher: p.voucher,
     articulacaoId: p.articulacaoId ?? null,
+    codigoPedido: p.codigoPedido ?? null,
+    cnpjClinica: p.cnpjClinica || null,
+    nomeClinica: p.nomeClinica ?? null,
     codigoPaciente: p.codigoPaciente,
     nomeExame: p.nomeExame ?? null,
     dataInfusao: p.dataInfusao ?? null,
@@ -277,14 +294,24 @@ async function salvarPedido(faturamentoId: string, p: PedidoInput): Promise<void
     savedId = created.id;
   }
 
+  // Identificação que a operação reconhece: Pedido ID (ou o voucher, na falta)
+  const pedidoRef = p.codigoPedido?.trim() || p.voucher;
+  const detalhePedido = {
+    pedido: pedidoRef,
+    voucher: p.voucher,
+    ...(p.nomeClinica ? { clinica: p.nomeClinica } : {}),
+    ...(p.cnpjClinica ? { cnpj: p.cnpjClinica } : {}),
+    _pedidoIds: [savedId],
+  };
+
   // Create LOTE_AUSENTE divergencias for alert rows
   if (p.alertas?.includes("LOTE_AUSENTE")) {
     await prisma.divergencia.create({
       data: {
         faturamentoId,
         tipo: "LOTE_AUSENTE",
-        descricao: `Pedido ${p.voucher} sem número de lote para medicamento que exige rastreabilidade`,
-        detalhe: { pedidoId: savedId, voucher: p.voucher } as Prisma.InputJsonValue,
+        descricao: `Pedido ${pedidoRef} sem número de lote para medicamento que exige rastreabilidade`,
+        detalhe: detalhePedido as Prisma.InputJsonValue,
       },
     });
   }
@@ -298,13 +325,12 @@ async function salvarPedido(faturamentoId: string, p: PedidoInput): Promise<void
         faturamentoId,
         tipo: "VALOR_NAO_RECONHECIDO",
         descricao:
-          `Pedido ${p.voucher}: valor "${p.valorUnitarioBruto ?? ""}" não reconhecido como número ` +
+          `Pedido ${pedidoRef}: valor "${p.valorUnitarioBruto ?? ""}" não reconhecido como número ` +
           `— verifique o formato da célula na planilha do Autorizador`,
         detalhe: {
           origem: "AUTORIZADOR",
-          pedidoId: savedId,
-          voucher: p.voucher,
           valorBruto: p.valorUnitarioBruto ?? "",
+          ...detalhePedido,
         } as Prisma.InputJsonValue,
       },
     });

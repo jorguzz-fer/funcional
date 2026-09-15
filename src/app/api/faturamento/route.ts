@@ -30,27 +30,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   // 3. Validate required fields, dates, extensions and sizes
   const validacao = validarUploadFaturamento(formData);
   if (validacao.error) return validacao.error;
-  const { autorizadorFile, proteusFile, dataInicio, dataFechamento } = validacao.dados;
+  const { autorizadorFile, proteusFile, dataInicio, dataFechamento, programa } = validacao.dados;
 
-  // Check for existing faturamento for the same period. A period can only be
-  // conciliated once; to redo it the user opens the existing faturamento and
-  // replaces its spreadsheets (reprocessar) or deletes it.
-  const existing = await prisma.faturamento.findUnique({
-    where: { dataInicio_dataFechamento: { dataInicio, dataFechamento } },
-    select: { id: true },
-  });
-  if (existing) {
-    const fmt = (d: Date) => d.toLocaleDateString("pt-BR");
-    return NextResponse.json(
-      {
-        error:
-          `Já existe um faturamento registrado para o período ${fmt(dataInicio)} — ${fmt(dataFechamento)}. ` +
-          `Abra-o para substituir as planilhas ou excluí-lo.`,
-        existingId: existing.id,
-      },
-      { status: 409 },
-    );
-  }
+  // Vários faturamentos podem coexistir na mesma competência (PSP, DSP, Remi
+  // Card…) — não há bloqueio por período. O rótulo "programa" os distingue.
 
   // 4. Read files into memory (+ best-effort backup on disk)
   let arquivos: ArquivosLidos;
@@ -65,6 +48,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     data: {
       dataInicio,
       dataFechamento,
+      programa,
       status: "RASCUNHO",
     },
   });
@@ -86,6 +70,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     meta: {
       dataInicio: dataInicio.toISOString(),
       dataFechamento: dataFechamento.toISOString(),
+      programa,
       autorizador: autorizadorFile.name,
       proteus: proteusFile.name,
     },

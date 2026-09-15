@@ -3,6 +3,9 @@
 interface Pedido {
   id: string;
   voucher: string;
+  /** "Pedido ID" do Autorizador — identificador reconhecido pela operação */
+  codigoPedido: string | null;
+  numeroNotaFiscal: string | null;
   codigoPaciente: string;
   dataInfusao: Date | null;
   ageDias: number | null;
@@ -11,6 +14,9 @@ interface Pedido {
   statusOrdemPagamento: string | null;
   excluido: boolean;
   motivoExclusao: string | null;
+  /** CNPJ/nome vindos da planilha (quando a clínica não está cadastrada) */
+  cnpjClinica: string | null;
+  nomeClinica: string | null;
   clinica: { cnpj: string; razaoSocial: string; nomeFantasia: string | null; grandeRede: boolean } | null;
   medicamento: { nome: string } | null;
 }
@@ -50,6 +56,7 @@ export default function PedidosTable({ pedidos }: { pedidos: Pedido[] }) {
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-gray-100 dark:border-[#1e2d47]">
+            <th className="px-4 py-3 text-left font-semibold text-gray-500 dark:text-gray-400 whitespace-nowrap">Pedido ID</th>
             <th className="px-4 py-3 text-left font-semibold text-gray-500 dark:text-gray-400 whitespace-nowrap">Voucher</th>
             <th className="px-4 py-3 text-left font-semibold text-gray-500 dark:text-gray-400 whitespace-nowrap">Clínica</th>
             <th className="px-4 py-3 text-left font-semibold text-gray-500 dark:text-gray-400 whitespace-nowrap">Medicamento</th>
@@ -72,6 +79,16 @@ export default function PedidosTable({ pedidos }: { pedidos: Pedido[] }) {
             >
               <td className="px-4 py-3">
                 <span className={`font-mono text-xs font-medium ${p.excluido ? "line-through text-gray-400" : "text-gray-900 dark:text-white"}`}>
+                  {p.codigoPedido ?? "—"}
+                </span>
+                {p.numeroNotaFiscal && (
+                  <span className="block text-xs text-gray-400 mt-0.5 whitespace-nowrap">
+                    NF {p.numeroNotaFiscal}
+                  </span>
+                )}
+              </td>
+              <td className="px-4 py-3">
+                <span className={`font-mono text-xs font-medium ${p.excluido ? "line-through text-gray-400" : "text-gray-700 dark:text-gray-300"}`}>
                   {p.voucher}
                 </span>
                 {p.excluido && p.motivoExclusao && (
@@ -86,7 +103,7 @@ export default function PedidosTable({ pedidos }: { pedidos: Pedido[] }) {
               <td className="px-4 py-3">
                 <div className="flex items-center gap-1.5">
                   <p className="text-gray-800 dark:text-gray-200 text-xs font-medium leading-snug max-w-[180px] truncate">
-                    {p.clinica?.nomeFantasia ?? p.clinica?.razaoSocial ?? "—"}
+                    {p.clinica?.nomeFantasia ?? p.clinica?.razaoSocial ?? p.nomeClinica ?? "—"}
                   </p>
                   {p.clinica?.grandeRede && (
                     <span
@@ -98,7 +115,7 @@ export default function PedidosTable({ pedidos }: { pedidos: Pedido[] }) {
                   )}
                 </div>
                 <p className="text-gray-400 text-xs font-mono">
-                  {p.clinica?.cnpj ?? "—"}
+                  {p.clinica?.cnpj ?? p.cnpjClinica ?? "—"}
                 </p>
               </td>
               <td className="px-4 py-3">

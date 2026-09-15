@@ -84,9 +84,12 @@ Identificador técnico do pacote: `funcional-farma`, versão `1.0.0`. É um sist
 | Ingestão de arquivos | Upload das planilhas do Autorizador e do Proteus (`.xlsx`, `.xls`, `.csv`, até 50 MB cada) |
 | Limpeza e normalização | Rotinas dedicadas por origem (`limparAutorizador`, `limparProteus`) |
 | Deduplicação histórica | Bloqueio automático de vouchers já faturados em períodos anteriores |
-| Conciliação automática | Match primário por nota fiscal normalizada; o código da ordem de pagamento (OP) é usado apenas como complemento quando o Proteus o informa — a OP pertence ao Autorizador e não é exigida no relatório do Proteus. Pedidos com OP mas ainda sem NF ficam "aguardando NF", sem gerar divergência |
+| Conciliação automática | Nota fiscal identificada por número + emissor (raiz do CNPJ), de modo que notas de mesmo número de parceiros diferentes não se confundem; linhas do Proteus e pedidos do Autorizador são somados por nota antes da comparação, gerando uma única divergência por nota. O código da ordem de pagamento (OP) é usado apenas como complemento quando o Proteus o informa — a OP pertence ao Autorizador e não é exigida no relatório do Proteus. Pedidos com OP mas ainda sem NF ficam "aguardando NF", sem gerar divergência |
 | Detecção de divergências | 9 tipos catalogados (abaixo) |
-| Reprocessamento | Substituição das planilhas de um faturamento já conciliado (mantendo o registro e permitindo ajustar o período) e exclusão do faturamento, ambos auditados |
+| Reprocessamento | Substituição das planilhas de um faturamento já conciliado (mantendo o registro e permitindo ajustar o período e o programa) e exclusão do faturamento, ambos auditados |
+| Múltiplos faturamentos por competência | Vários faturamentos podem coexistir no mesmo período (PSP, DSP, Remi Card…), independentes entre si e identificados pelo campo "programa"; ao criar, o sistema apenas informa os já existentes no período |
+| Identificação operacional | Divergências e listagens usam o "Pedido ID" do Autorizador (com voucher, NF e clínica), nunca identificadores internos do banco |
+| Histórico | Data de criação, filtros por ano, por período de competência e por programa, e exportação do histórico em planilha (auditada) |
 | Tratativa de divergências | Fluxo de resolução com registro de responsável, data e notas |
 | Exportação | Geração de planilhas nos formatos "Funcional" e "Proteus", com segmentação Grandes Redes × Convencionais |
 | Análises | Painéis por ano, por clínica e por medicamento |
@@ -714,7 +717,7 @@ Hospedar no Brasil elimina integralmente a discussão de transferência internac
 ```
 1. UPLOAD        Usuário (ANALYST+) envia planilhas do Autorizador e do Proteus
                  → validação de extensão, tamanho (≤50MB) e período
-                 → bloqueio de período duplicado
+                 → vários faturamentos por competência (PSP, DSP…), distinguidos pelo programa
                  → evento auditado
 
 2. LIMPEZA       Normalização por origem (limparAutorizador / limparProteus)
@@ -725,7 +728,9 @@ Hospedar no Brasil elimina integralmente a discussão de transferência internac
 4. PERSISTÊNCIA  Gravação idempotente por voucher + articulação
                  (permite reprocessar sem duplicar)
 
-5. CONCILIAÇÃO   Match primário por nota fiscal normalizada
+5. CONCILIAÇÃO   Nota fiscal identificada por número + emissor (raiz do CNPJ)
+                 Pedidos e linhas do Proteus somados por nota; uma divergência por nota
+                 Células mescladas das planilhas são preenchidas antes da leitura
                  Código de ordem de pagamento usado só como complemento
                  (a OP pertence ao Autorizador; não é exigida no Proteus —
                  pedido com OP e sem NF fica "aguardando NF", sem divergência)

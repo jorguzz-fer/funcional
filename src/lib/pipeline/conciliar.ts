@@ -1,9 +1,22 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { normalizarCnpj, normalizarTexto } from "./utils";
+import { chaveEmissor, formatarBRL, normalizarCnpj, normalizarNF } from "./utils";
 
 /**
  * Executes the conciliation logic for a given Faturamento.
+ *
+ * Identidade de uma nota fiscal = NÚMERO DA NF + EMISSOR (raiz do CNPJ).
+ * Parceiros diferentes emitem notas com o mesmo número, então o número
+ * sozinho não identifica a nota; matriz e filiais compartilham a raiz do CNPJ
+ * e são tratadas como o mesmo emissor. Quando um dos lados não informa CNPJ,
+ * a nota é casada só pelo número (se ele for único no Proteus).
+ *
+ * Agrupamento (ambos os lados) antes de qualquer comparação:
+ *   - Autorizador: pedidos da mesma NF/emissor → soma de valorUnitario.
+ *   - Proteus: linhas da mesma NF/emissor → soma de valorTotal.
+ * A comparação é feita GRUPO contra GRUPO e gera UMA divergência por nota
+ * (nunca uma por pedido), listando os pedidos pelo identificador que a
+ * operação reconhece (Pedido ID, ou o voucher na falta dele).
  *
  * Match strategy (as described by the Funcional team):
  *   PRIMARY   — numeroNotaFiscal (Autorizador) ↔ numeroNotaFiscal (Proteus)
@@ -15,9 +28,6 @@ import { normalizarCnpj, normalizarTexto } from "./utils";
  *               whose OP is not found in the Proteus is NOT a divergence —
  *               its conciliação stays PENDENTE (aguardando NF) until the
  *               nota fiscal is issued and shows up in the Proteus.
- *
- * Pedidos are grouped by their match key so the sum of valorUnitario
- * across the group can be compared against the single OrdemPagamento.valorTotal.
  */
 export async function executarConciliacao(faturamentoId: string): Promise<void> {
   // ── 1. Load data ───────────────────────────────────────────────────────────
@@ -25,10 +35,14 @@ export async function executarConciliacao(faturamentoId: string): Promise<void> 
     where: { faturamentoId, excluido: false },
     select: {
       id: true,
+      voucher: true,
+      codigoPedido: true,
       codigoOrdemPagamento: true,
       numeroNotaFiscal: true,
       valorUnitario: true,
-      clinica: { select: { cnpj: true } },
+      cnpjClinica: true,
+      nomeClinica: true,
+      clinica: { select: { cnpj: true, razaoSocial: true, nomeFantasia: true } },
     },
   });
 
@@ -40,110 +54,177 @@ export async function executarConciliacao(faturamentoId: string): Promise<void> 
       numeroNotaFiscal: true,
       valorTotal: true,
       cnpj: true,
+      razaoSocial: true,
     },
   });
 
-  // ── 2. Build lookup maps for OrdemPagamento ────────────────────────────────
-  // PRIMARY: by normalized NF
-  const ordemPorNF = new Map<string, (typeof ordens)[number]>();
-  // FALLBACK: by codigoOrdem
-  const ordemPorCodigo = new Map<string, (typeof ordens)[number]>();
+  type Pedido = (typeof pedidos)[number];
+  type Ordem = (typeof ordens)[number];
+
+  // ── 2. Proteus: agrupa linhas por NF + emissor (e por código), somando ────
+  interface GrupoOrdem {
+    chaveNF: string;
+    emissor: string;
+    cnpj: string | null;
+    razaoSocial: string | null;
+    ordens: Ordem[];
+    valorTotal: number;
+  }
+
+  const gruposPorNF = new Map<string, GrupoOrdem[]>(); // chaveNF → um grupo por emissor
+  const gruposPorCodigo = new Map<string, GrupoOrdem>();
 
   for (const ordem of ordens) {
-    const nfKey = normalizarNF(ordem.numeroNotaFiscal);
-    if (nfKey) ordemPorNF.set(nfKey, ordem);
+    const chaveNF = normalizarNF(ordem.numeroNotaFiscal);
+    const emissor = chaveEmissor(ordem.cnpj);
 
-    if (ordem.codigoOrdem) {
-      ordemPorCodigo.set(ordem.codigoOrdem.trim(), ordem);
+    if (chaveNF) {
+      const lista = gruposPorNF.get(chaveNF) ?? [];
+      let grupo = lista.find((g) => g.emissor === emissor);
+      if (!grupo) {
+        grupo = { chaveNF, emissor, cnpj: ordem.cnpj, razaoSocial: ordem.razaoSocial, ordens: [], valorTotal: 0 };
+        lista.push(grupo);
+        gruposPorNF.set(chaveNF, lista);
+      }
+      grupo.ordens.push(ordem);
+      grupo.valorTotal += num(ordem.valorTotal);
+    }
+
+    const codigo = ordem.codigoOrdem?.trim();
+    if (codigo) {
+      let grupo = gruposPorCodigo.get(codigo);
+      if (!grupo) {
+        grupo = { chaveNF, emissor, cnpj: ordem.cnpj, razaoSocial: ordem.razaoSocial, ordens: [], valorTotal: 0 };
+        gruposPorCodigo.set(codigo, grupo);
+      }
+      grupo.ordens.push(ordem);
+      grupo.valorTotal += num(ordem.valorTotal);
     }
   }
 
-  // ── 3. Group Pedidos by match key ─────────────────────────────────────────
-  type MatchType = "NF" | "CODIGO" | "NENHUM";
-  interface Grupo {
-    pedidos: (typeof pedidos)[number][];
-    matchType: MatchType;
-    matchKey: string;
+  // ── 3. Autorizador: agrupa pedidos por NF + emissor (ou por código) ───────
+  type TipoMatch = "NF" | "CODIGO" | "NENHUM";
+  interface GrupoPedido {
+    tipo: TipoMatch;
+    chaveNF: string;
+    emissor: string;
+    codigo: string;
+    pedidos: Pedido[];
   }
 
-  const grupos = new Map<string, Grupo>();
+  const grupos = new Map<string, GrupoPedido>();
 
   for (const pedido of pedidos) {
-    const nfKey  = normalizarNF(pedido.numeroNotaFiscal);
-    const codKey = pedido.codigoOrdemPagamento?.trim();
+    const chaveNF = normalizarNF(pedido.numeroNotaFiscal);
+    const emissor = chaveEmissor(cnpjDoPedido(pedido));
+    const codigo = pedido.codigoOrdemPagamento?.trim() ?? "";
 
-    if (nfKey) {
-      const gKey = `NF:${nfKey}`;
-      if (!grupos.has(gKey)) grupos.set(gKey, { pedidos: [], matchType: "NF", matchKey: nfKey });
-      grupos.get(gKey)!.pedidos.push(pedido);
-    } else if (codKey) {
-      const gKey = `COD:${codKey}`;
-      if (!grupos.has(gKey)) grupos.set(gKey, { pedidos: [], matchType: "CODIGO", matchKey: codKey });
-      grupos.get(gKey)!.pedidos.push(pedido);
+    let tipo: TipoMatch;
+    let key: string;
+    if (chaveNF) {
+      tipo = "NF";
+      key = `NF:${chaveNF}|${emissor}`;
+    } else if (codigo) {
+      tipo = "CODIGO";
+      key = `COD:${codigo}`;
     } else {
-      // No NF and no codigoOrdemPagamento → cannot match
-      const gKey = `NENHUM:${pedido.id}`;
-      grupos.set(gKey, { pedidos: [pedido], matchType: "NENHUM", matchKey: "" });
+      tipo = "NENHUM";
+      key = `NENHUM:${pedido.id}`;
     }
+
+    let grupo = grupos.get(key);
+    if (!grupo) {
+      grupo = { tipo, chaveNF, emissor, codigo, pedidos: [] };
+      grupos.set(key, grupo);
+    }
+    grupo.pedidos.push(pedido);
   }
 
-  // ── 4. Process each group ─────────────────────────────────────────────────
+  // ── 4. Compara grupo contra grupo ─────────────────────────────────────────
   for (const grupo of grupos.values()) {
-    const { pedidos: gruPedidos, matchType, matchKey } = grupo;
+    const gp = grupo.pedidos;
+    const primeiro = gp[0];
+    const somaPedidos = gp.reduce((acc, p) => acc + num(p.valorUnitario), 0);
+    const pedidosRef = identificarPedidos(gp);
+    const clinicaRef = descreverClinica(primeiro);
+    const nfRef = primeiro.numeroNotaFiscal?.trim() || grupo.chaveNF;
+    const cnpjAutorizador = cnpjDoPedido(primeiro);
 
-    // Pedidos without any match key
-    if (matchType === "NENHUM") {
-      const pedido = gruPedidos[0];
+    // Pedido sem nenhuma chave de match
+    if (grupo.tipo === "NENHUM") {
       await upsertConciliacao({
         faturamentoId,
-        pedidoId: pedido.id,
+        pedidoId: primeiro.id,
         ordemId: null,
         status: "ATENCAO",
-        valorAutorizador: null,
+        valorAutorizador: somaPedidos,
         valorProteus: null,
         diferenca: null,
       });
       await criarDivergencia({
         faturamentoId,
         tipo: "LINHA_FALTANTE",
-        descricao: "Pedido sem nota fiscal nem código de ordem — não foi possível conciliar",
-        detalhe: { pedidoId: pedido.id },
+        descricao: `Pedido ${pedidosRef} (${clinicaRef}) sem nota fiscal nem código de ordem — não foi possível conciliar`,
+        detalhe: {
+          pedidos: pedidosRef,
+          voucher: primeiro.voucher,
+          clinica: clinicaRef,
+          _pedidoIds: gp.map((p) => p.id),
+        },
+        valorAutorizador: somaPedidos,
       });
       continue;
     }
 
-    // Find the matching OrdemPagamento
-    const ordem = matchType === "NF"
-      ? ordemPorNF.get(matchKey)
-      : ordemPorCodigo.get(matchKey);
+    // Localiza o grupo correspondente no Proteus
+    let grupoOrdem: GrupoOrdem | undefined;
+    let motivoNaoEncontrado = "";
 
-    const somaPedidos = gruPedidos.reduce(
-      (acc, p) => acc + (p.valorUnitario ? Number(p.valorUnitario) : 0),
-      0,
-    );
-
-    // Pedido sem NF, apenas com código de ordem de pagamento, e a OP não
-    // consta no Proteus. A OP é informação do Autorizador — a base do Proteus
-    // normalmente não traz esse código — portanto isso NÃO é divergência:
-    // a conciliação fica PENDENTE (aguardando a nota fiscal).
-    if (!ordem && matchType === "CODIGO") {
-      for (const pedido of gruPedidos) {
-        await upsertConciliacao({
-          faturamentoId,
-          pedidoId: pedido.id,
-          ordemId: null,
-          status: "PENDENTE",
-          valorAutorizador: somaPedidos,
-          valorProteus: null,
-          diferenca: null,
-        });
+    if (grupo.tipo === "NF") {
+      const candidatos = gruposPorNF.get(grupo.chaveNF) ?? [];
+      const exato = candidatos.find((c) => c.emissor === grupo.emissor);
+      if (exato) {
+        grupoOrdem = exato;
+      } else if (candidatos.length === 1 && (!grupo.emissor || !candidatos[0].emissor)) {
+        // Um dos lados não informa CNPJ e o número é único no Proteus → casa só pelo número
+        grupoOrdem = candidatos[0];
+      } else if (candidatos.length === 0) {
+        motivoNaoEncontrado = `NF ${nfRef} não encontrada no Proteus`;
+      } else {
+        const outros = candidatos
+          .map((c) => (c.cnpj ? normalizarCnpj(c.cnpj) : "sem CNPJ"))
+          .join(", ");
+        motivoNaoEncontrado = grupo.emissor
+          ? `NF ${nfRef} não encontrada no Proteus para o CNPJ ${normalizarCnpj(cnpjAutorizador)} — com esse número existe apenas de ${outros}`
+          : `NF ${nfRef} aparece ${candidatos.length}× no Proteus (${outros}) e o pedido não informa CNPJ para identificar o emissor`;
       }
-      continue;
+    } else {
+      grupoOrdem = gruposPorCodigo.get(grupo.codigo);
     }
 
-    for (const pedido of gruPedidos) {
-      if (!ordem) {
-        // NF informada no Autorizador mas não encontrada no Proteus
+    if (!grupoOrdem) {
+      if (grupo.tipo === "CODIGO") {
+        // Pedido sem NF, apenas com código de ordem de pagamento, e a OP não
+        // consta no Proteus. A OP é informação do Autorizador — a base do
+        // Proteus normalmente não traz esse código — portanto isso NÃO é
+        // divergência: a conciliação fica PENDENTE (aguardando a nota fiscal).
+        for (const pedido of gp) {
+          await upsertConciliacao({
+            faturamentoId,
+            pedidoId: pedido.id,
+            ordemId: null,
+            status: "PENDENTE",
+            valorAutorizador: somaPedidos,
+            valorProteus: null,
+            diferenca: null,
+          });
+        }
+        continue;
+      }
+
+      // NF informada no Autorizador mas não encontrada no Proteus — UMA
+      // divergência para a nota, listando os pedidos
+      for (const pedido of gp) {
         await upsertConciliacao({
           faturamentoId,
           pedidoId: pedido.id,
@@ -153,78 +234,86 @@ export async function executarConciliacao(faturamentoId: string): Promise<void> 
           valorProteus: null,
           diferenca: null,
         });
-        await criarDivergencia({
-          faturamentoId,
-          tipo: "LINHA_FALTANTE",
-          descricao: `NF "${pedido.numeroNotaFiscal}" não encontrada no Proteus`,
-          detalhe: { matchKey, matchType, pedidoId: pedido.id },
-          valorAutorizador: somaPedidos,
-        });
-        continue;
       }
+      await criarDivergencia({
+        faturamentoId,
+        tipo: "LINHA_FALTANTE",
+        descricao: `${motivoNaoEncontrado} — ${gp.length} pedido${gp.length !== 1 ? "s" : ""} (${pedidosRef}) — ${clinicaRef}`,
+        detalhe: {
+          nf: nfRef,
+          clinica: clinicaRef,
+          ...(cnpjAutorizador ? { cnpj: normalizarCnpj(cnpjAutorizador) } : {}),
+          pedidos: pedidosRef,
+          qtdPedidos: gp.length,
+          _pedidoIds: gp.map((p) => p.id),
+        },
+        valorAutorizador: somaPedidos,
+      });
+      continue;
+    }
 
-      const valorProteus = ordem.valorTotal ? Number(ordem.valorTotal) : 0;
-      const diferenca    = Math.abs(somaPedidos - valorProteus);
-      const divergencias: string[] = [];
+    // ── Grupo encontrado: compara valores, CNPJ ─────────────────────────────
+    const valorProteus = grupoOrdem.valorTotal;
+    const diferenca = Math.abs(somaPedidos - valorProteus);
+    const problemas: string[] = [];
+    const linhasProteus = grupoOrdem.ordens.length;
+    const nfProteusRef = grupoOrdem.ordens[0].numeroNotaFiscal?.trim() || nfRef;
+    const referencia = grupo.tipo === "NF" ? `NF ${nfRef}` : `Ordem ${grupo.codigo} (NF ${nfProteusRef})`;
 
-      // Valor divergente (tolerance R$ 0,01)
-      if (diferenca > 0.01) {
-        divergencias.push("VALOR_DIVERGENTE");
-        await criarDivergencia({
-          faturamentoId,
-          tipo: "VALOR_DIVERGENTE",
-          descricao: `Valor Autorizador (${somaPedidos.toFixed(2)}) ≠ Valor Proteus (${valorProteus.toFixed(2)}) — NF "${pedido.numeroNotaFiscal ?? matchKey}"`,
-          detalhe: { matchKey, matchType, pedidoId: pedido.id, ordemId: ordem.id },
-          valorAutorizador: somaPedidos,
-          valorProteus,
-        });
-      }
+    const detalheBase = {
+      nf: grupo.tipo === "NF" ? nfRef : nfProteusRef,
+      ...(grupo.tipo === "CODIGO" ? { ordem: grupo.codigo } : {}),
+      clinica: clinicaRef,
+      ...(cnpjAutorizador ? { cnpjAutorizador: normalizarCnpj(cnpjAutorizador) } : {}),
+      ...(grupoOrdem.cnpj ? { cnpjProteus: normalizarCnpj(grupoOrdem.cnpj) } : {}),
+      pedidos: pedidosRef,
+      qtdPedidos: gp.length,
+      linhasProteus,
+      _pedidoIds: gp.map((p) => p.id),
+      _ordemIds: grupoOrdem.ordens.map((o) => o.id),
+    };
 
-      // NF divergente (só checamos quando o match foi por código, para detectar divergência de NF)
-      if (matchType === "CODIGO") {
-        const nfAut = normalizarTexto(pedido.numeroNotaFiscal ?? "");
-        const nfPro = normalizarTexto(ordem.numeroNotaFiscal ?? "");
-        if (nfAut && nfPro && nfAut !== nfPro) {
-          divergencias.push("NF_ABREVIADA");
-          await criarDivergencia({
-            faturamentoId,
-            tipo: "NF_ABREVIADA",
-            descricao: `NF Autorizador "${pedido.numeroNotaFiscal}" ≠ NF Proteus "${ordem.numeroNotaFiscal}"`,
-            detalhe: {
-              matchKey,
-              pedidoId: pedido.id,
-              ordemId: ordem.id,
-              nfAutorizador: pedido.numeroNotaFiscal,
-              nfProteus: ordem.numeroNotaFiscal,
-            },
-          });
-        }
-      }
+    // Valor divergente (tolerance R$ 0,01) — uma divergência por nota
+    if (diferenca > 0.01) {
+      problemas.push("VALOR_DIVERGENTE");
+      await criarDivergencia({
+        faturamentoId,
+        tipo: "VALOR_DIVERGENTE",
+        descricao:
+          `${referencia} (${clinicaRef}): Autorizador ${formatarBRL(somaPedidos)} ` +
+          `(${gp.length} pedido${gp.length !== 1 ? "s" : ""}: ${pedidosRef}) ≠ Proteus ${formatarBRL(valorProteus)} ` +
+          `(${linhasProteus} linha${linhasProteus !== 1 ? "s" : ""})`,
+        detalhe: detalheBase,
+        valorAutorizador: somaPedidos,
+        valorProteus,
+      });
+    }
 
-      // CNPJ divergente
-      const cnpjAut = normalizarCnpj(pedido.clinica?.cnpj ?? "");
-      const cnpjPro = normalizarCnpj(ordem.cnpj ?? "");
-      if (cnpjAut && cnpjPro && cnpjAut !== cnpjPro) {
-        divergencias.push("CNPJ_DIFERENTE");
-        await criarDivergencia({
-          faturamentoId,
-          tipo: "CNPJ_DIFERENTE",
-          descricao: `CNPJ Autorizador "${cnpjAut}" ≠ CNPJ Proteus "${cnpjPro}"`,
-          detalhe: {
-            matchKey,
-            pedidoId: pedido.id,
-            ordemId: ordem.id,
-            cnpjAutorizador: cnpjAut,
-            cnpjProteus: cnpjPro,
-          },
-        });
-      }
+    // CNPJ divergente: emissores conhecidos dos dois lados e CNPJs completos
+    // diferentes. No match por NF a raiz é igual por construção (matriz ×
+    // filial); no match por código pode ser um parceiro diferente.
+    const cnpjAut = normalizarCnpj(cnpjAutorizador ?? "");
+    const cnpjPro = normalizarCnpj(grupoOrdem.cnpj ?? "");
+    if (cnpjAut && cnpjPro && cnpjAut !== cnpjPro) {
+      problemas.push("CNPJ_DIFERENTE");
+      const mesmaRaiz = chaveEmissor(cnpjAut) === chaveEmissor(cnpjPro);
+      await criarDivergencia({
+        faturamentoId,
+        tipo: "CNPJ_DIFERENTE",
+        descricao:
+          `${referencia}: CNPJ de faturamento no Autorizador ${cnpjAut} ≠ CNPJ pago no Proteus ${cnpjPro}` +
+          (mesmaRaiz ? " (mesma raiz — matriz/filial)" : "") +
+          ` — ${clinicaRef}`,
+        detalhe: detalheBase,
+      });
+    }
 
+    for (const pedido of gp) {
       await upsertConciliacao({
         faturamentoId,
         pedidoId: pedido.id,
-        ordemId: ordem.id,
-        status: divergencias.length > 0 ? "ATENCAO" : "OK",
+        ordemId: grupoOrdem.ordens[0].id,
+        status: problemas.length > 0 ? "ATENCAO" : "OK",
         valorAutorizador: somaPedidos,
         valorProteus,
         diferenca,
@@ -235,19 +324,40 @@ export async function executarConciliacao(faturamentoId: string): Promise<void> 
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-/**
- * Normalizes a nota fiscal number for comparison:
- * lowercases, trims, removes accents and underscores.
- * Returns null/empty string when the input is blank.
- */
-function normalizarNF(raw: string | null | undefined): string {
-  if (!raw) return "";
-  const s = String(raw)
-    .trim()
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "");
-  return s;
+function num(v: Prisma.Decimal | null): number {
+  return v ? Number(v) : 0;
+}
+
+interface PedidoRef {
+  voucher: string;
+  codigoPedido: string | null;
+  cnpjClinica: string | null;
+  nomeClinica: string | null;
+  clinica: { cnpj: string; razaoSocial: string; nomeFantasia: string | null } | null;
+}
+
+/** Identificador que a operação reconhece: Pedido ID, ou o voucher na falta dele. */
+export function identificarPedido(p: Pick<PedidoRef, "voucher" | "codigoPedido">): string {
+  return p.codigoPedido?.trim() || p.voucher;
+}
+
+function identificarPedidos(ps: PedidoRef[], max = 8): string {
+  const ids = ps.map(identificarPedido);
+  if (ids.length <= max) return ids.join(", ");
+  return `${ids.slice(0, max).join(", ")} (+${ids.length - max})`;
+}
+
+function cnpjDoPedido(p: PedidoRef): string | null {
+  return p.cnpjClinica || p.clinica?.cnpj || null;
+}
+
+function descreverClinica(p: PedidoRef): string {
+  const nome = p.clinica?.nomeFantasia || p.clinica?.razaoSocial || p.nomeClinica || null;
+  const cnpj = cnpjDoPedido(p);
+  if (nome && cnpj) return `${nome} — ${normalizarCnpj(cnpj)}`;
+  if (nome) return nome;
+  if (cnpj) return `CNPJ ${normalizarCnpj(cnpj)}`;
+  return "clínica não identificada";
 }
 
 interface ConciliacaoData {
@@ -292,9 +402,10 @@ interface DivergenciaData {
     | "RAZAO_SOCIAL_DIFERENTE"
     | "LOTE_AUSENTE"
     | "VOUCHER_SEM_FINALIZACAO"
+    | "VALOR_NAO_RECONHECIDO"
     | "OUTRO";
   descricao: string;
-  detalhe?: Prisma.InputJsonValue;
+  detalhe?: Record<string, unknown>;
   valorAutorizador?: number;
   valorProteus?: number;
 }

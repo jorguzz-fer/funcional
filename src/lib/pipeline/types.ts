@@ -3,6 +3,8 @@
 export interface PedidoInput {
   voucher: string;
   articulacaoId?: string | null;
+  /** "Pedido ID" do Autorizador — identificador reconhecido pela operação. */
+  codigoPedido?: string | null;
   codigoPaciente: string;
   nomeExame?: string | null;
   dataInfusao?: Date | null;

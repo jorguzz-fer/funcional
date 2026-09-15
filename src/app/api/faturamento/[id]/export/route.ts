@@ -27,7 +27,7 @@ export async function GET(req: Request, { params }: Params) {
 
   const faturamento = await prisma.faturamento.findUnique({
     where: { id: faturamentoId },
-    select: { id: true, dataInicio: true, dataFechamento: true, status: true },
+    select: { id: true, dataInicio: true, dataFechamento: true, programa: true, status: true },
   });
 
   if (!faturamento) {
@@ -36,7 +36,16 @@ export async function GET(req: Request, { params }: Params) {
 
   const fmtFile = (d: Date) =>
     `${String(d.getDate()).padStart(2, "0")}${String(d.getMonth() + 1).padStart(2, "0")}${d.getFullYear()}`;
-  const periodo = `${fmtFile(faturamento.dataInicio)}_${fmtFile(faturamento.dataFechamento)}`;
+  // O programa (PSP, DSP…) entra no nome do arquivo para distinguir
+  // faturamentos da mesma competência.
+  const programaSlug = faturamento.programa
+    ? faturamento.programa
+        .normalize("NFD")
+        .replace(/[̀-ͯ]/g, "")
+        .replace(/[^A-Za-z0-9]+/g, "_")
+        .replace(/^_+|_+$/g, "")
+    : "";
+  const periodo = `${programaSlug ? `${programaSlug}_` : ""}${fmtFile(faturamento.dataInicio)}_${fmtFile(faturamento.dataFechamento)}`;
   const sufixoCat =
     categoria === "grandes" ? "_GrandesRedes" : categoria === "convencionais" ? "_Convencionais" : "";
 
@@ -88,6 +97,7 @@ async function gerarExportFuncional(faturamentoId: string, periodo: string, cate
   });
 
   const linhas = pedidos.map((p) => ({
+    "Pedido ID":                  p.codigoPedido ?? "",
     "Voucher / Cód. Autorização": p.voucher,
     "ID Articulação":             p.articulacaoId ?? "",
     "Código Paciente (BR-A/DSP)": p.codigoPaciente,
@@ -108,8 +118,8 @@ async function gerarExportFuncional(faturamentoId: string, periodo: string, cate
     "Data Envio NF":              p.dataEnvioNota ? formatarData(p.dataEnvioNota) : "",
     "Status Voucher":             p.statusVoucher ?? "",
     "Status Ordem":               p.statusOrdemPagamento ?? "",
-    "CNPJ Clínica (Faturamento)": p.clinica?.cnpj ?? "",
-    "Nome Clínica":               p.clinica?.nomeFantasia ?? p.clinica?.razaoSocial ?? "",
+    "CNPJ Clínica (Faturamento)": p.clinica?.cnpj ?? p.cnpjClinica ?? "",
+    "Nome Clínica":               p.clinica?.nomeFantasia ?? p.clinica?.razaoSocial ?? p.nomeClinica ?? "",
     "Categoria":                  p.clinica?.grandeRede ? "Grande Rede" : "Convencional",
     "Cidade":                     p.clinica?.cidade ?? "",
     "Estado":                     p.clinica?.estado ?? "",
